@@ -29,23 +29,8 @@ const year = new Date().getFullYear();
         <a href="/" aria-current={active === 'home' ? 'page' : undefined}>דף הבית</a>
         <a href="/השראות-ויצירות/" aria-current={active === 'gallery' ? 'page' : undefined}>השראות ויצירות</a>
       </nav>
-      <div class="head-tools">
-        <button class="icon-btn" type="button" id="a11y-toggle" aria-label="תפריט נגישות" aria-expanded="false" aria-controls="a11y-panel">
-          <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="4.5" r="1.8"/><path d="M5 8.5l7 1.5 7-1.5M12 10v5m0 0l-3.5 6M12 15l3.5 6"/></svg>
-        </button>
-      </div>
     </div>
   </header>
-  <div class="a11y-panel" id="a11y-panel" role="dialog" aria-label="הגדרות נגישות" hidden>
-    <h2>נגישות</h2>
-    <button type="button" data-a11y="bigger">הגדלת טקסט</button>
-    <button type="button" data-a11y="smaller">הקטנת טקסט</button>
-    <button type="button" data-a11y="contrast" aria-pressed="false">ניגודיות גבוהה</button>
-    <button type="button" data-a11y="links" aria-pressed="false">הדגשת קישורים</button>
-    <button type="button" data-a11y="motion" aria-pressed="false">עצירת אנימציות</button>
-    <button type="button" data-a11y="reset">איפוס</button>
-  </div>
-
   <main id="main"><slot /></main>
 
   <footer class="site-footer">
@@ -83,28 +68,6 @@ const year = new Date().getFullYear();
 
   <script is:inline>
     (function () {
-      var root = document.documentElement, KEY = 'yz-a11y', s = {};
-      try { s = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) {}
-      function apply() {
-        root.style.setProperty('--fs', String(s.fs || 1));
-        ['contrast', 'links', 'motion'].forEach(function (k) {
-          root.classList.toggle('a11y-' + k, !!s[k]);
-          var b = document.querySelector('[data-a11y="' + k + '"]'); if (b) b.setAttribute('aria-pressed', String(!!s[k]));
-        });
-        try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) {}
-      }
-      apply();
-      var t = document.getElementById('a11y-toggle'), p = document.getElementById('a11y-panel');
-      t.addEventListener('click', function () { var o = p.hidden; p.hidden = !o; t.setAttribute('aria-expanded', String(o)); if (o) p.querySelector('button').focus(); });
-      document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !p.hidden) { p.hidden = true; t.setAttribute('aria-expanded', 'false'); t.focus(); } });
-      p.addEventListener('click', function (e) {
-        var a = e.target.getAttribute('data-a11y'); if (!a) return;
-        if (a === 'bigger') s.fs = Math.min(1.4, (s.fs || 1) + 0.1);
-        else if (a === 'smaller') s.fs = Math.max(0.9, (s.fs || 1) - 0.1);
-        else if (a === 'reset') s = {};
-        else s[a] = !s[a];
-        apply();
-      });
       var f = document.getElementById('idea-form');
       f.addEventListener('submit', function (e) {
         e.preventDefault();

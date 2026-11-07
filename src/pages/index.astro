@@ -1,13 +1,12 @@
 ---
 import Base from '../layouts/Base.astro';
 import CreationCard from '../components/CreationCard.astro';
-import MiniCard from '../components/MiniCard.astro';
 import { creations, href, teaser } from '../lib/data';
 
 const featured = creations.slice(0, 4);
-const latest = creations.slice(4, 10);
+const latest = creations.slice(4, 7);
 const story = creations.find((c) => c.slug === 'שעון-ממקשי-מקלדת') ?? creations[0];
-const heroImg = '/media/2020/11/צמיד-חוטים-28-1.jpg';
+const heroImg = '/hero.jpg';
 ---
 <Base title="יצירונט" active="home" image={heroImg}>
   <section class="hero">
@@ -19,9 +18,10 @@ const heroImg = '/media/2020/11/צמיד-חוטים-28-1.jpg';
         <a class="pill" href="/השראות-ויצירות/">התחילו ליצור עכשיו</a>
       </div>
       <div class="hero-media">
-        <div class="blob b1"></div>
-        <div class="blob b2"></div>
-        <img class="hero-photo" src={heroImg} alt="צמיד מקרמה בעבודת יד" width="800" height="600" fetchpriority="high" />
+        <div class="blob b1 float"></div>
+        <div class="blob b2 float d2"></div>
+        <div class="blob b3 float d3"></div>
+        <img class="hero-photo" src={heroImg} alt="ידיים אורזות מתנה בנייר חום וחוט חבל" width="876" height="596" fetchpriority="high" />
       </div>
     </div>
   </section>
@@ -50,9 +50,10 @@ const heroImg = '/media/2020/11/צמיד-חוטים-28-1.jpg';
     <div class="blob" style="width:300px;height:300px;background:var(--cream-2);right:-120px;bottom:-60px"></div>
     <div class="wrap">
       <h2 class="section-title">עוד <b>יצירות</b></h2>
-      <div class="latest">
-        {latest.map((c) => <MiniCard c={c} />)}
+      <div class="cards three">
+        {latest.map((c, i) => <CreationCard c={c} v={i + 1} />)}
       </div>
+      <p class="more-link"><a class="pill" href="/השראות-ויצירות/">לכל היצירות</a></p>
     </div>
   </section>
 
@@ -61,14 +62,11 @@ const heroImg = '/media/2020/11/צמיד-חוטים-28-1.jpg';
     <div class="wrap">
       <h2 class="section-title">היצירה <b>המומלצת</b></h2>
       <article class="story">
-        <img src={story.cover} alt="" width="800" height="600" loading="lazy" />
-        <div class="story-panel">
-          <img src={story.steps[Math.min(9, story.steps.length - 1)].image ?? story.cover} alt="" width="800" height="600" loading="lazy" />
-          <div>
-            <h3>{story.title}</h3>
-            <p>{teaser(story, 170)}</p>
-            <a class="more" href={href(story)}>+ למדריך המלא</a>
-          </div>
+        <img src={story.cover} alt={story.title} width="800" height="600" loading="lazy" />
+        <div class="story-text">
+          <h3>{story.title}</h3>
+          <p>{teaser(story, 200)}</p>
+          <a class="more" href={href(story)}>+ למדריך המלא</a>
         </div>
       </article>
     </div>

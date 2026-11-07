@@ -1,6 +1,6 @@
 ---
 import Base from '../../layouts/Base.astro';
-import MiniCard from '../../components/MiniCard.astro';
+import CreationCard from '../../components/CreationCard.astro';
 import { creations, teaser } from '../../lib/data';
 
 export function getStaticPaths() {
@@ -8,11 +8,11 @@ export function getStaticPaths() {
 }
 const { c } = Astro.props;
 const idx = creations.findIndex((x) => x.id === c.id);
-const more = [1, 2, 3, 4, 5, 6].map((k) => creations[(idx + k) % creations.length]);
+const more = [1, 2, 3].map((k) => creations[(idx + k) % creations.length]);
 const withImg = c.steps.filter((s) => s.image).length;
 ---
 <Base title={c.title} description={teaser(c, 155)} image={c.cover} active="gallery">
-  <section class="hero">
+  <section class="hero creation">
     <div class="blob" style="width:480px;height:480px;background:var(--pink-soft);right:-240px;top:-180px"></div>
     <div class="wrap hero-grid">
       <div>
@@ -25,8 +25,8 @@ const withImg = c.steps.filter((s) => s.image).length;
         </div>
       </div>
       <div class="hero-media">
-        <div class="blob b1"></div>
-        <div class="blob b2"></div>
+        <div class="blob b2 float d2"></div>
+        <div class="blob b3 float d3"></div>
         <img class="hero-photo" src={c.cover} alt={c.title} width="800" height="600" fetchpriority="high" />
       </div>
     </div>
@@ -49,10 +49,10 @@ const withImg = c.steps.filter((s) => s.image).length;
     <div class="blob" style="width:420px;height:420px;background:var(--teal-soft);right:-240px;bottom:200px"></div>
     <div class="wrap">
       <h2 class="section-title">הוראות <b>הכנה</b></h2>
-      <ol class="cards three" style="list-style:none;margin:0;padding:0">
+      <ol class="cards three steps">
         {c.steps.map((s, i) => (
-          <li class={`ccard step v${i % 4}${s.image ? '' : ' noimg'}`}>
-            {s.image && <div class="ccard-img"><img src={s.image} alt={`שלב ${i + 1}`} width="800" height="600" loading={i < 3 ? 'eager' : 'lazy'} /></div>}
+          <li class={`ccard step v${i % 4}`}>
+            <div class="ccard-img">{s.image ? <img src={s.image} alt={`שלב ${i + 1}`} width="800" height="600" loading={i < 3 ? 'eager' : 'lazy'} /> : <img src={c.cover} alt="" width="800" height="600" loading="lazy" />}</div>
             <div class="ccard-panel">
               <span class="num" aria-hidden="true">{i + 1}</span>
               <span class="sr-only">שלב {i + 1}:</span>
@@ -77,7 +77,8 @@ const withImg = c.steps.filter((s) => s.image).length;
   <section class="section">
     <div class="wrap">
       <h2 class="section-title">עוד יצירות <b>שתאהבו</b></h2>
-      <div class="latest">{more.map((m) => <MiniCard c={m} />)}</div>
+      <div class="cards three">{more.map((m, i) => <CreationCard c={m} v={i} />)}</div>
+      <p class="more-link"><a class="pill" href="/השראות-ויצירות/">לכל היצירות</a></p>
     </div>
   </section>
 </Base>
