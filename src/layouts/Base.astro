@@ -37,7 +37,7 @@ const year = new Date().getFullYear();
     <div class="wrap">
       <div class="foot-grid">
         <div>
-          <img class="foot-logo" src="/logo-wordmark-light.png" alt="יצירונט" width="583" height="248" />
+          <a class="foot-logo-link" href="/" aria-label="יצירונט — דף הבית"><img class="foot-logo" src="/logo-wordmark-light.png" alt="יצירונט" width="583" height="248" /></a>
           <p style="margin:0;color:#cbbfb1;font-size:.95rem">השראה והוראות – שלב אחר שלב, להפוך חומרים פשוטים ליצירות מדהימות.</p>
         </div>
         <div>
@@ -61,7 +61,7 @@ const year = new Date().getFullYear();
       </div>
       <div class="foot-bottom">
         <span>© {year} כל הזכויות שמורות ליצירונט · המידע לשימוש עצמי בלבד</span>
-        <span>פיתוח ועיצוב – רוטנט</span>
+        <a href={`https://wa.me/972524723399?text=${encodeURIComponent("היי מוישי, הגעתי אליך מהאתר יצירונט")}`} target="_blank" rel="noopener">פיתוח ועיצוב: מוישי רוט</a>
       </div>
     </div>
   </footer>

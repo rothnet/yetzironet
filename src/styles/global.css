@@ -77,7 +77,8 @@ a { color: inherit; }
 .hero h1 { font-weight: 300; font-size: clamp(2.8rem, 6.2vw, 5.4rem); line-height: 1.02; margin: 0 0 24px; letter-spacing: -.02em; }
 .hero h1 b { font-weight: 800; display: block; }
 .hero p { font-size: 1.2rem; color: var(--ink-2); margin: 0 0 32px; max-width: 34ch; }
-.hero-media { position: relative; }
+.hero-media { position: relative; max-width: 620px; justify-self: end; width: 100%; }
+.hero.creation .hero-media { max-width: none; }
 .hero-photo { position: relative; z-index: 1; width: 100%; height: auto; aspect-ratio: 3 / 2; object-fit: cover; border-radius: 28px 240px 240px 28px; box-shadow: 0 24px 60px rgba(31, 26, 36, .14); }
 .hero-media .b1 { width: 230px; height: 230px; background: var(--yellow); left: -60px; bottom: -56px; }
 .hero-media .b2 { width: 120px; height: 120px; background: var(--teal); right: 36px; top: -44px; }
@@ -166,6 +167,7 @@ a.ccard:hover { transform: translateY(-6px); box-shadow: 0 18px 40px rgba(31, 26
 .site-footer ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: .95rem; }
 .site-footer a { text-decoration: none; color: #efe6da; }
 .site-footer a:hover { color: #fff; text-decoration: underline; }
+.foot-logo-link { display: inline-block; }
 .foot-logo { height: 54px; width: auto; margin-bottom: 14px; }
 .idea { display: grid; gap: 10px; }
 .idea .row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
