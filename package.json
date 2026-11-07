@@ -9,6 +9,11 @@
   },
   "dependencies": {
     "@fontsource/heebo": "^5.3.0",
+    "@simplewebauthn/browser": "^14.0.0",
+    "@simplewebauthn/server": "^14.1.0",
     "astro": "^7.4.7"
+  },
+  "devDependencies": {
+    "wrangler": "^4.158.0"
   }
 }

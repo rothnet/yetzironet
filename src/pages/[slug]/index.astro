@@ -1,7 +1,8 @@
 ---
 import Base from '../../layouts/Base.astro';
 import CreationCard from '../../components/CreationCard.astro';
-import { creations, teaser } from '../../lib/data';
+import SignupDownload from '../../components/SignupDownload.astro';
+import { creations, teaser, site, waLink, splitTitle } from '../../lib/data';
 
 export function getStaticPaths() {
   return creations.map((c) => ({ params: { slug: c.slug }, props: { c } }));
@@ -37,7 +38,9 @@ const withImg = c.steps.filter((s) => s.image).length;
       <div class="materials">
         <div>
           <h2>{c.materialsTitle}</h2>
-          {c.download && <div class="download"><a class="pill" href={c.download.file} download>{c.download.label}</a></div>}
+          {c.download && <div class="download">{c.download.gated
+            ? <button class="pill" type="button" data-open-signup>{c.download.label}</button>
+            : <a class="pill" href={c.download.file} download>{c.download.label}</a>}</div>}
         </div>
         <ul>{c.materials.map((m) => <li>{m}</li>)}</ul>
       </div>
@@ -50,13 +53,24 @@ const withImg = c.steps.filter((s) => s.image).length;
     <div class="wrap">
       <h2 class="section-title">הוראות <b>הכנה</b></h2>
       <ol class="cards three steps">
-        {c.steps.map((s, i) => (
+        {c.steps.map((s, i) => s.image ? (
           <li class={`ccard step v${i % 4}`}>
-            <div class="ccard-img">{s.image ? <img src={s.image} alt={`שלב ${i + 1}`} width="800" height="600" loading={i < 3 ? 'eager' : 'lazy'} /> : <img src={c.cover} alt="" width="800" height="600" loading="lazy" />}</div>
+            <div class="ccard-img"><img src={s.image} alt={`שלב ${i + 1}`} width="800" height="600" loading={i < 3 ? 'eager' : 'lazy'} /></div>
             <div class="ccard-panel">
               <span class="num" aria-hidden="true">{i + 1}</span>
               <span class="sr-only">שלב {i + 1}:</span>
               <p>{s.text}</p>
+            </div>
+          </li>
+        ) : (
+          <li class={`ccard step wide v${i % 4}`}>
+            <div class="ccard-panel">
+              <span class="num" aria-hidden="true">{i + 1}</span>
+              <span class="sr-only">שלב {i + 1}:</span>
+              <div>
+                <p>{s.text}</p>
+                {c.download?.gated && <button class="pill" type="button" data-open-signup style="margin-top:14px;background:var(--fg);color:var(--c)">{c.download.label}</button>}
+              </div>
             </div>
           </li>
         ))}
@@ -67,9 +81,9 @@ const withImg = c.steps.filter((s) => s.image).length;
   <section class="section" style="padding-top:8px">
     <div class="wrap">
       <div class="closing">
-        <h2>עשו זאת <b>בעצמכם!</b></h2>
-        <p>מוזמנים ליצור ולשתף אותנו – האם נהנתם? איך יצא? שלחו לנו תמונה בוואטסאפ. בהצלחה!</p>
-        <p style="margin-top:22px"><a class="pill" style="background:var(--yellow);color:var(--ink)" href="https://wa.me/972527491119" target="_blank" rel="noopener">שליחת תמונה בוואטסאפ</a></p>
+        <h2>{splitTitle(site.creationPage.closingTitle)[0]} <b>{splitTitle(site.creationPage.closingTitle)[1]}</b></h2>
+        <p>{site.creationPage.closingText}</p>
+        <p style="margin-top:22px"><a class="pill" style="background:var(--yellow);color:var(--ink)" href={waLink(`היי, הכנתי את "${c.title}"!`)} target="_blank" rel="noopener">{site.creationPage.closingButton}</a></p>
       </div>
     </div>
   </section>
@@ -81,4 +95,5 @@ const withImg = c.steps.filter((s) => s.image).length;
       <p class="more-link"><a class="pill" href="/השראות-ויצירות/">לכל היצירות</a></p>
     </div>
   </section>
+  {c.download?.gated && <SignupDownload slug={c.slug} label={c.download.label} title={c.title} />}
 </Base>

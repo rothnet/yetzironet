@@ -1,10 +1,13 @@
 ---
 import '../styles/global.css';
+import { site } from '../lib/data';
 interface Props { title: string; description?: string; image?: string; active?: 'home' | 'gallery' | null }
-const { title, description = 'יצירות עשה זאת בעצמך — הדרכות מצולמות, שלב אחר שלב.', image, active = null } = Astro.props;
-const full = title === 'יצירונט' ? 'יצירונט — יצירות עשה זאת בעצמך' : `${title} | יצירונט`;
+const { title, description = site.seo.description, image, active = null } = Astro.props;
+const full = title === 'יצירונט' ? site.seo.title : `${title} | יצירונט`;
 const og = image ? new URL(encodeURI(image), Astro.site).href : undefined;
 const year = new Date().getFullYear();
+const t = site.tracking;
+const phoneIntl = site.footer.phone.replace(/\D/g, '').replace(/^0/, '+972');
 ---
 <!doctype html>
 <html lang="he" dir="rtl">
@@ -19,8 +22,13 @@ const year = new Date().getFullYear();
   <meta property="og:description" content={description} />
   <meta property="og:locale" content="he_IL" />
   {og && <meta property="og:image" content={og} />}
+  {t.gtm && <script is:inline set:html={`(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer',${JSON.stringify(t.gtm)});`} />}
+  {t.ga4 && <script is:inline async src={`https://www.googletagmanager.com/gtag/js?id=${t.ga4}`}></script>}
+  {t.ga4 && <script is:inline set:html={`window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config',${JSON.stringify(t.ga4)});`} />}
+  {t.headCode && <Fragment set:html={t.headCode} />}
 </head>
 <body>
+  {t.gtm && <noscript><iframe src={`https://www.googletagmanager.com/ns.html?id=${t.gtm}`} height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>}
   <a class="skip" href="#main">דלג לתוכן</a>
   <header class="site-header">
     <div class="wrap">
@@ -38,19 +46,19 @@ const year = new Date().getFullYear();
       <div class="foot-grid">
         <div>
           <a class="foot-logo-link" href="/" aria-label="יצירונט — דף הבית"><img class="foot-logo" src="/logo-wordmark-light.png" alt="יצירונט" width="583" height="248" /></a>
-          <p style="margin:0;color:#cbbfb1;font-size:.95rem">השראה והוראות – שלב אחר שלב, להפוך חומרים פשוטים ליצירות מדהימות.</p>
+          <p style="margin:0;color:#cbbfb1;font-size:.95rem">{site.footer.tagline}</p>
         </div>
         <div>
           <h2>ניווט</h2>
           <ul>
             <li><a href="/">דף הבית</a></li>
             <li><a href="/השראות-ויצירות/">השראות ויצירות</a></li>
-            <li><a href="tel:+972527491119">052-749-1119</a></li>
-            <li><a href="https://wa.me/972527491119" target="_blank" rel="noopener">וואטסאפ</a></li>
+            <li><a href={`tel:${phoneIntl}`}>{site.footer.phone}</a></li>
+            <li><a href={`https://wa.me/${site.contact.whatsapp}`} target="_blank" rel="noopener">וואטסאפ</a></li>
           </ul>
         </div>
-        <form class="idea" id="idea-form" aria-labelledby="idea-title">
-          <h2 id="idea-title">יש לכם רעיון ליצירה? כתבו לנו...</h2>
+        <form class="idea" id="idea-form" aria-labelledby="idea-title" data-wa={site.contact.whatsapp} data-copy={site.contact.saveCopy ? '1' : ''}>
+          <h2 id="idea-title">{site.footer.formTitle}</h2>
           <div class="row">
             <label>שם<input name="name" type="text" autocomplete="name" required /></label>
             <label>טלפון<input name="phone" type="tel" autocomplete="tel" /></label>
@@ -60,8 +68,8 @@ const year = new Date().getFullYear();
         </form>
       </div>
       <div class="foot-bottom">
-        <span class="rights"><span>© {year} כל הזכויות שמורות ליצירונט</span><span class="dot" aria-hidden="true"> · </span><span>המידע לשימוש עצמי בלבד</span></span>
-        <a href={`https://wa.me/972524723399?text=${encodeURIComponent("היי מוישי, הגעתי אליך מהאתר יצירונט")}`} target="_blank" rel="noopener">פיתוח ועיצוב: מוישי רוט</a>
+        <span class="rights"><span>© {year} {site.footer.rights}</span><span class="dot" aria-hidden="true"> · </span><span>{site.footer.note}</span></span>
+        <a href={`https://wa.me/972524723399?text=${encodeURIComponent('היי מוישי, הגעתי אליך מהאתר יצירונט')}`} target="_blank" rel="noopener">פיתוח ועיצוב: מוישי רוט</a>
       </div>
     </div>
   </footer>
@@ -73,9 +81,16 @@ const year = new Date().getFullYear();
         e.preventDefault();
         var d = new FormData(f);
         var msg = 'שלום, יש לי רעיון ליצירה!\n' + d.get('message') + '\n\n' + d.get('name') + (d.get('phone') ? ' · ' + d.get('phone') : '');
-        window.open('https://wa.me/972527491119?text=' + encodeURIComponent(msg), '_blank', 'noopener');
+        if (f.dataset.copy) {
+          try {
+            fetch('/api/contact', { method: 'POST', keepalive: true, headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ name: d.get('name'), phone: d.get('phone'), message: d.get('message'), page: location.pathname }) }).catch(function () {});
+          } catch (err) {}
+        }
+        window.open('https://wa.me/' + f.dataset.wa + '?text=' + encodeURIComponent(msg), '_blank', 'noopener');
       });
     })();
   </script>
+  {t.bodyCode && <Fragment set:html={t.bodyCode} />}
 </body>
 </html>

@@ -130,6 +130,9 @@ a.ccard:hover { transform: translateY(-6px); box-shadow: 0 18px 40px rgba(31, 26
 .step p { font-size: 1.02rem; opacity: 1; white-space: pre-line; padding-top: 8px; }
 
 .more-link { text-align: center; margin-top: 40px; }
+.step.wide { grid-column: 1 / -1; }
+.step.wide .ccard-panel { padding: 26px 22px; align-items: center; }
+.step.wide p { font-size: 1.15rem; padding-top: 0; }
 
 /* ---------- story band ---------- */
 .story { display: grid; grid-template-columns: minmax(0, 400px) minmax(0, 1fr); align-items: center; gap: 40px; border-radius: 30px; background: var(--pink); color: #fff; padding: 24px; }

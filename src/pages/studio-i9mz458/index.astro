@@ -1,0 +1,25 @@
+---
+import '@fontsource/heebo/400.css';
+import '@fontsource/heebo/500.css';
+import '@fontsource/heebo/700.css';
+import '@fontsource/heebo/800.css';
+import '../../admin/admin.css';
+---
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>לוח בקרה | יצירונט</title>
+  <link rel="icon" href="/favicon.png" type="image/png" />
+</head>
+<body>
+  <div id="app" aria-live="polite"><p class="boot">טוען…</p></div>
+  <div id="toast" role="status" aria-live="polite" hidden></div>
+  <script>
+    import { start } from '../../admin/app';
+    start();
+  </script>
+</body>
+</html>

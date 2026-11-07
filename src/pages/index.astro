@@ -1,27 +1,28 @@
 ---
 import Base from '../layouts/Base.astro';
 import CreationCard from '../components/CreationCard.astro';
-import { creations, href, teaser } from '../lib/data';
+import { creations, href, teaser, site, splitTitle } from '../lib/data';
+const h = site.home;
 
 const featured = creations.slice(0, 4);
 const latest = creations.slice(4, 7);
-const story = creations.find((c) => c.slug === 'שעון-ממקשי-מקלדת') ?? creations[0];
-const heroImg = '/hero.jpg';
+const story = creations.find((c) => c.slug === h.storySlug) ?? creations[0];
+const heroImg = h.heroImage;
 ---
 <Base title="יצירונט" active="home" image={heroImg}>
   <section class="hero">
     <div class="blob" style="width:520px;height:520px;background:var(--cream-2);right:-220px;top:-160px"></div>
     <div class="wrap hero-grid">
       <div>
-        <h1>יצירות עשה<b>זאת בעצמך!</b></h1>
-        <p>המקור האולטימטיבי בשבילך לקבלת השראה יצירתית. צלול לתוך חדוות היצירה עם ההדרכות הפשוטות שלב אחר שלב. אני כאן כדי לעזור לך לייצר פרויקטים מהנים וקלים, כגון: צמידי מקרמה, שעון ממקשי מקלדת ועוד. אין צורך בניסיון – רק ההתלהבות והסקרנות שלך!</p>
-        <a class="pill" href="/השראות-ויצירות/">התחילו ליצור עכשיו</a>
+        <h1>{h.heroTitle1}<b>{h.heroTitle2}</b></h1>
+        <p>{h.heroText}</p>
+        <a class="pill" href="/השראות-ויצירות/">{h.heroButton}</a>
       </div>
       <div class="hero-media">
         <div class="blob b1 float"></div>
         <div class="blob b2 float d2"></div>
         <div class="blob b3 float d3"></div>
-        <img class="hero-photo" src={heroImg} alt="ידיים אורזות מתנה בנייר חום וחוט חבל" width="605" height="452" fetchpriority="high" />
+        <img class="hero-photo" src={heroImg} alt="ידיים אורזות מתנה בנייר חום וחוט חבל" width="605" height="452" fetchpriority="high" style="aspect-ratio:3/2" />
       </div>
     </div>
   </section>
@@ -29,8 +30,8 @@ const heroImg = '/hero.jpg';
   <section class="section welcome">
     <div class="wrap">
       <svg class="squiggle" aria-hidden="true" width="120" height="14" viewBox="0 0 120 14" fill="none"><path d="M2 7c10-8 20 8 29 0s19-8 29 0 19 8 29 0 20-8 29 0" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
-      <h2>ברוכים הבאים <b>ליצירונט!</b></h2>
-      <p>אם אתם אוהבים יצירות ולהוטים ליצור יצירות מופת ייחודיות בעצמכם, הגעתם ליעד המושלם. כאן תקבלו השראה והוראות – שלב אחר שלב כדי להפוך חומרים פשוטים ליצירות מדהימות עם תוצאות יוצאות דופן.</p>
+      <h2>{h.welcomeTitle1} <b>{h.welcomeTitle2}</b></h2>
+      <p>{h.welcomeText}</p>
     </div>
   </section>
 
@@ -38,7 +39,7 @@ const heroImg = '/hero.jpg';
     <div class="blob" style="width:560px;height:560px;background:var(--pink-soft);right:-300px;top:40px"></div>
     <div class="blob" style="width:300px;height:300px;background:var(--yellow-soft);left:-120px;bottom:-40px"></div>
     <div class="wrap">
-      <h2 class="section-title">השראות <b>ויצירות</b></h2>
+      <h2 class="section-title">{splitTitle(h.featuredTitle)[0]} <b>{splitTitle(h.featuredTitle)[1]}</b></h2>
       <div class="cards">
         {featured.map((c, i) => <CreationCard c={c} v={i} />)}
       </div>
@@ -49,7 +50,7 @@ const heroImg = '/hero.jpg';
     <div class="blob" style="width:380px;height:380px;background:var(--teal-soft);left:-200px;top:20px"></div>
     <div class="blob" style="width:300px;height:300px;background:var(--cream-2);right:-120px;bottom:-60px"></div>
     <div class="wrap">
-      <h2 class="section-title">עוד <b>יצירות</b></h2>
+      <h2 class="section-title">{splitTitle(h.moreTitle)[0]} <b>{splitTitle(h.moreTitle)[1]}</b></h2>
       <div class="cards three">
         {latest.map((c, i) => <CreationCard c={c} v={i + 1} />)}
       </div>
@@ -60,7 +61,7 @@ const heroImg = '/hero.jpg';
   <section class="section">
     <div class="blob" style="width:340px;height:340px;background:var(--yellow);left:-180px;bottom:-80px"></div>
     <div class="wrap">
-      <h2 class="section-title">היצירה <b>המומלצת</b></h2>
+      <h2 class="section-title">{splitTitle(h.storyTitle)[0]} <b>{splitTitle(h.storyTitle)[1]}</b></h2>
       <a class="story" href={href(story)}>
         <img src={story.cover} alt={story.title} width="800" height="600" loading="lazy" />
         <div class="story-text">

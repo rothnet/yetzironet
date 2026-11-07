@@ -126,7 +126,8 @@
    }
   ],
   "download": null,
-  "order": 0
+  "order": 0,
+  "published": true
  },
  {
   "id": 1768,
@@ -189,7 +190,8 @@
    }
   ],
   "download": null,
-  "order": 1
+  "order": 1,
+  "published": true
  },
  {
   "id": 1739,
@@ -272,7 +274,8 @@
    }
   ],
   "download": null,
-  "order": 2
+  "order": 2,
+  "published": true
  },
  {
   "id": 1359,
@@ -345,7 +348,8 @@
    }
   ],
   "download": null,
-  "order": 3
+  "order": 3,
+  "published": true
  },
  {
   "id": 998,
@@ -451,7 +455,8 @@
    }
   ],
   "download": null,
-  "order": 4
+  "order": 4,
+  "published": true
  },
  {
   "id": 958,
@@ -503,14 +508,16 @@
    },
    {
     "image": null,
-    "text": "רוצים לקבל את רשימת 100 הפתגמים? הירשמו ממש כאן בטופס וקבלו את הפתגמים.\n????????????????????"
+    "text": "רוצים לקבל את רשימת 100 הפתגמים? הירשמו ממש כאן בטופס וקבלו את הפתגמים."
    }
   ],
   "download": {
-   "label": "רשימת 100 הפתגמים (PDF)",
-   "file": "/media/2020/07/100-פיתגמים.pdf"
+   "label": "לקבלת רשימת 100 הפתגמים",
+   "file": "/media/2020/07/100-פיתגמים.pdf",
+   "gated": true
   },
-  "order": 5
+  "order": 5,
+  "published": true
  },
  {
   "id": 598,
@@ -571,7 +578,8 @@
    }
   ],
   "download": null,
-  "order": 6
+  "order": 6,
+  "published": true
  },
  {
   "id": 357,
@@ -694,7 +702,8 @@
    }
   ],
   "download": null,
-  "order": 7
+  "order": 7,
+  "published": true
  },
  {
   "id": 295,
@@ -747,7 +756,8 @@
    }
   ],
   "download": null,
-  "order": 8
+  "order": 8,
+  "published": true
  },
  {
   "id": 88,
@@ -881,6 +891,7 @@
    }
   ],
   "download": null,
-  "order": 9
+  "order": 9,
+  "published": true
  }
 ]
