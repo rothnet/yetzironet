@@ -213,6 +213,8 @@ html.a11y-motion *, html.a11y-motion *::before { transition: none !important; an
   .foot-grid > div { text-align: center; }
   .foot-grid > div p { margin-inline: auto !important; max-width: 32ch; }
   .idea h2 { text-align: center; }
+  .rights > span { display: block; }
+  .rights .dot { display: none; }
   .foot-bottom { flex-direction: column; align-items: center; text-align: center; gap: 8px; }
   .section { padding-block: 52px; }
 }
