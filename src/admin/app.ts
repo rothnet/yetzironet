@@ -54,6 +54,12 @@ const I = {
   finger: svg('<path d="M12 11v4M8 9a4 4 0 0 1 8 0v5c0 2-1 4-2 5M6 13v-2a6 6 0 0 1 12 0M9 19c1-1 1-3 1-5v-3"/>'),
   copy: svg('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/>'),
   menu: svg('<path d="M4 7h16M4 12h16M4 17h16"/>'),
+  log: svg('<path d="M8 4h11v16H8"/><path d="M5 8h6M5 12h6M5 16h6"/>'),
+  out: svg('<path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/>'),
+  ext: svg('<path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6"/>'),
+  plus: svg('<path d="M12 5v14M5 12h14"/>'),
+  draft: svg('<path d="M5 4h10l4 4v12H5z"/><path d="M9 12h6M9 16h4"/>'),
+  mail: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>'),
 };
 
 function toast(msg: string, err = false, ms = 3500) {
@@ -133,35 +139,49 @@ const deviceName = () => {
   return 'מכשיר';
 };
 
+const isPhone = /Android|iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.userAgent));
+const canPk = () => isPhone && browserSupportsWebAuthn();
+const initial = (n?: string) => esc((n || '?').trim().charAt(0));
+const greeting = () => { const h = new Date().getHours(); return h < 5 ? 'לילה טוב' : h < 12 ? 'בוקר טוב' : h < 17 ? 'צהריים טובים' : h < 21 ? 'ערב טוב' : 'לילה טוב'; };
+
 // ---------- shell ----------
-const NAV: [string, string, string][] = [
-  ['dashboard', 'לוח בקרה', I.home],
-  ['creations', 'יצירות', I.brush],
-  ['media', 'ספריית מדיה', I.image],
-  ['content', 'תוכן האתר', I.text],
-  ['messages', 'פניות', I.inbox],
-  ['leads', 'נרשמים', I.file],
-  ['users', 'משתמשים', I.users],
-  ['tracking', 'קודי מעקב', I.code],
-  ['account', 'החשבון שלי', I.key],
+const NAV: [string, [string, string, string][]][] = [
+  ['', [
+    ['dashboard', 'לוח בקרה', I.home],
+    ['activity', 'יומן פעילות', I.log],
+    ['messages', 'פניות', I.inbox],
+    ['leads', 'נרשמים', I.file],
+  ]],
+  ['תוכן האתר', [
+    ['creations', 'יצירות', I.brush],
+    ['media', 'ספריית מדיה', I.image],
+    ['content', 'טקסטים ועמודים', I.text],
+  ]],
+  ['הגדרות', [
+    ['users', 'משתמשים', I.users],
+    ['tracking', 'קודי מעקב', I.code],
+    ['account', 'החשבון שלי', I.key],
+  ]],
 ];
 
 function shell(inner: string) {
   const active = route.startsWith('creation') ? 'creations' : route;
   app.innerHTML = `
-  <header class="bar"><div class="in">
-    <button class="btn icon menu-btn" data-a="menu" aria-label="תפריט">${I.menu}</button>
-    <img src="/logo-wordmark.png" alt="יצירונט" width="583" height="248" />
-    <span class="ttl">לוח בקרה</span><span class="sp"></span>
-    <a class="btn ghost small" href="/" target="_blank" rel="noopener">${I.eye}<span class="hide-sm">לאתר</span></a>
-    <button class="btn ghost small" data-a="logout">יציאה</button>
-  </div></header>
   <div class="layout">
-    <nav class="side" aria-label="תפריט ניהול">
-      ${NAV.map(([r, label, icon]) => `<a href="#${r}" ${active === r ? 'aria-current="page"' : ''}>${icon}<span>${label}</span></a>`).join('')}
-      <div class="who">${esc(me?.name)}<small>${me?.role === 'owner' ? 'בעלים' : 'עורך/ת'}</small></div>
-    </nav>
-    <main class="wrap">${inner}</main>
+    <aside class="side" aria-label="תפריט ניהול">
+      <a class="brand" href="#dashboard"><img src="/logo-wordmark-light.png" alt="יצירונט" width="583" height="248" /><small>ניהול האתר</small></a>
+      <nav>${NAV.map(([g, items]) => `${g ? `<div class="grp">${g}</div>` : ''}${items.map(([r, label, icon]) => `<a href="#${r}" ${active === r ? 'aria-current="page"' : ''}>${icon}<span>${label}</span></a>`).join('')}`).join('')}</nav>
+      <div class="side-foot">
+        <a href="/" target="_blank" rel="noopener">${I.ext}<span>לאתר</span></a>
+        <div class="who"><span class="av">${initial(me?.name)}</span><div><b>${esc(me?.name)}</b><small>${me?.role === 'owner' ? 'מנהל ראשי' : 'עורך/ת'}</small></div>
+          <button class="out" data-a="logout" aria-label="יציאה" title="יציאה">${I.out}</button></div>
+      </div>
+    </aside>
+    <div class="scrim" data-a="menu"></div>
+    <div class="main">
+      <header class="mbar"><button class="btn icon" data-a="menu" aria-label="תפריט">${I.menu}</button><img src="/logo-wordmark.png" alt="יצירונט" width="583" height="248" /><span class="sp"></span><a class="btn icon" href="/" target="_blank" rel="noopener" aria-label="לאתר">${I.ext}</a></header>
+      <main class="wrap">${inner}</main>
+    </div>
   </div>`;
 }
 
@@ -178,6 +198,7 @@ async function render() {
   const r = route;
   try {
     if (r === 'dashboard') return await renderDashboard();
+    if (r === 'activity') return await renderActivity();
     if (r === 'creations') return await renderCreations();
     if (r.startsWith('creation:')) return await renderEditor(r.slice(9));
     if (r === 'media') return await renderMedia();
@@ -215,14 +236,14 @@ function authShell(inner: string) {
 }
 
 function renderLogin(msg = '') {
-  const pk = browserSupportsWebAuthn();
+  const pk = canPk();
   authShell(`
     <h1>כניסה ללוח הבקרה</h1>
     ${pk ? `<button class="btn pink big" data-a="pk-login">${I.finger} כניסה עם טביעת אצבע</button><div class="or">או</div>` : ''}
     <form id="pw-login" class="stack">
       <input class="input ltr" type="email" name="email" placeholder="אימייל" autocomplete="username" required aria-label="אימייל" />
       <input class="input ltr" type="password" name="password" placeholder="סיסמה" autocomplete="current-password" required aria-label="סיסמה" />
-      <button class="btn ${pk ? 'ghost' : 'pink'}" type="submit">כניסה עם סיסמה</button>
+      <button class="btn ${pk ? 'ghost' : 'pink'}" type="submit">${pk ? 'כניסה עם סיסמה' : 'כניסה'}</button>
     </form>
     <p role="alert" class="err-msg">${esc(msg)}</p>`);
   const f = document.getElementById('pw-login') as HTMLFormElement;
@@ -280,16 +301,19 @@ async function renderInvite(code: string) {
   catch (e) { authShell(`<h1>ההזמנה לא תקפה</h1><p class="muted">${esc((e as Error).message)}</p>`); return; }
   authShell(`
     <h1>שלום ${esc(info.name)}!</h1>
-    <p class="muted">הוזמנת לנהל את יצירונט. רשמו טביעת אצבע במכשיר הזה — ככה תיכנסו מעכשיו.</p>
+    ${canPk() ? `<p class="muted">הוזמנת לנהל את יצירונט. רשמו טביעת אצבע בטלפון — ככה תיכנסו מעכשיו.</p>
     <button class="btn pink big" data-a="invite-pk">${I.finger} רישום טביעת אצבע</button>
-    <details class="pw-alt"><summary>להגדיר גם סיסמה (גיבוי)</summary>
-      <form id="inv-pw" class="stack"><input class="input ltr" type="password" name="password" minlength="8" placeholder="סיסמה (8 תווים לפחות)" autocomplete="new-password" aria-label="סיסמה" />
-      <button class="btn ghost" type="submit">שמירת סיסמה</button></form></details>`);
+    <details class="pw-alt"><summary>להגדיר גם סיסמה לכניסה מהמחשב</summary>${'%FORM%'}</details>` : `<p class="muted">הוזמנת לנהל את יצירונט. בחרו סיסמה לכניסה מהמחשב. טביעת אצבע נרשמת אחר כך מהטלפון.</p>${'%FORM%'}`}`.replaceAll('%FORM%', `<form id="inv-pw" class="stack"><input class="input ltr" type="password" name="password" minlength="8" placeholder="סיסמה (8 תווים לפחות)" autocomplete="new-password" aria-label="סיסמה" />
+      <button class="btn ${canPk() ? 'ghost' : 'pink'}" type="submit">שמירת סיסמה</button></form>`));
   (app as any).dataset.invite = code;
   const f = document.getElementById('inv-pw') as HTMLFormElement;
   f.onsubmit = async (e) => {
     e.preventDefault();
-    try { await api('/api/auth/invite', { method: 'POST', json: { code, password: (f.elements.namedItem('password') as HTMLInputElement).value } }); toast('הסיסמה נשמרה. עכשיו רשמו טביעת אצבע.'); }
+    try {
+      await api('/api/auth/invite', { method: 'POST', json: { code, password: (f.elements.namedItem('password') as HTMLInputElement).value } });
+      if (canPk()) toast('הסיסמה נשמרה. עכשיו רשמו טביעת אצבע.');
+      else { history.replaceState(null, '', location.pathname); toast('הסיסמה נשמרה — אפשר להיכנס'); renderLogin(); }
+    }
     catch (err) { toast((err as Error).message, true); }
   };
 }
@@ -298,12 +322,16 @@ async function afterLogin(offerPasskey = false) {
   const j = await api('/api/auth/me');
   me = j.user;
   if (!me) return renderLogin();
-  route = offerPasskey && browserSupportsWebAuthn() ? 'account' : location.hash.slice(1) || 'dashboard';
+  route = offerPasskey && canPk() ? 'account' : location.hash.slice(1) || 'dashboard';
   history.replaceState(null, '', `#${route}`);
   render();
 }
 
 // ---------- dashboard ----------
+const statCard = (href: string, tone: string, icon: string, n: number, label: string) =>
+  `<a class="stat ${tone}" href="${href}"><span class="ic">${icon}</span><span class="lbl">${label}</span><b>${n}</b></a>`;
+const actRow = (l: any) => `<li><span class="dot"></span><div><b>${esc(l.user)}</b> · ${esc(l.action)}${l.detail ? `<span class="muted"> — ${esc(l.detail)}</span>` : ''}</div><time>${fmtDate(l.at)}</time></li>`;
+
 async function renderDashboard() {
   loading('לוח בקרה');
   const [, msgs, leads, act] = await Promise.all([
@@ -312,23 +340,32 @@ async function renderDashboard() {
   ]);
   const unread = msgs.messages.filter((m: any) => !m.read).length;
   const drafts = data.filter((c) => c.published === false).length;
+  const today = new Date().toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' });
   shell(`
-    <div class="head"><h1>שלום ${esc(me?.name?.split(' ')[0])}</h1><a class="btn pink" href="#creation:new">+ יצירה חדשה</a></div>
-    ${me && !me.passkeys.length ? `<a class="notice" href="#account">${I.finger} עוד לא רשמת טביעת אצבע — לחצו כאן לרישום במכשיר הזה</a>` : ''}
+    <div class="head"><div><h1>${greeting()}, ${esc(me?.name?.split(' ')[0])}</h1><p class="sub">${today}</p></div>
+      <div class="row3"><a class="btn ghost" href="/" target="_blank" rel="noopener">${I.ext} צפייה באתר</a><a class="btn pink" href="#creation:new">${I.plus} יצירה חדשה</a></div></div>
+    ${isPhone && me && !me.passkeys.length ? `<a class="notice" href="#account">${I.finger} עוד לא רשמת טביעת אצבע בטלפון — לחצו כאן לרישום</a>` : ''}
     <div class="stats">
-      <a class="stat" href="#creations"><b>${data.length - drafts}</b><span>יצירות באתר</span></a>
-      <a class="stat" href="#creations"><b>${drafts}</b><span>טיוטות</span></a>
-      <a class="stat ${unread ? 'hot' : ''}" href="#messages"><b>${unread}</b><span>פניות חדשות</span></a>
-      <a class="stat" href="#leads"><b>${leads.leads.length}</b><span>נרשמים</span></a>
+      ${statCard('#messages', 'pink', I.mail, unread, 'פניות שלא נקראו')}
+      ${statCard('#creations', 'teal', I.brush, data.length - drafts, 'יצירות באתר')}
+      ${statCard('#creations', 'yellow', I.draft, drafts, 'טיוטות')}
+      ${statCard('#leads', 'violet', I.file, leads.leads.length, 'נרשמים לקבצים')}
     </div>
     <div class="cols">
-      <section class="card"><h2>פניות אחרונות <a class="link" href="#messages">לכל הפניות</a></h2>
-        ${msgs.messages.length ? `<ul class="feed">${msgs.messages.slice(0, 5).map((m: any) => `<li class="${m.read ? '' : 'new'}"><b>${esc(m.name)}</b> ${esc(m.message.slice(0, 80))}<small>${fmtDate(m.at)}</small></li>`).join('')}</ul>` : '<p class="muted">אין עדיין פניות</p>'}
+      <section class="card"><h2>פניות אחרונות <a class="link" href="#messages">לכל הפניות ←</a></h2>
+        ${msgs.messages.length ? `<ul class="rows">${msgs.messages.slice(0, 6).map((m: any) => `<li class="${m.read ? '' : 'new'}"><span class="av sm">${initial(m.name)}</span><div><b>${esc(m.name)}</b><p>${esc(m.message.slice(0, 110))}</p></div><time>${fmtDate(m.at)}</time></li>`).join('')}</ul>` : `<div class="blank">${I.inbox}<p>אין עדיין פניות</p></div>`}
       </section>
-      <section class="card"><h2>יומן פעילות</h2>
-        ${act.log.length ? `<ul class="feed">${act.log.slice(0, 12).map((l: any) => `<li><b>${esc(l.user)}</b> ${esc(l.action)}${l.detail ? ` — ${esc(l.detail)}` : ''}<small>${fmtDate(l.at)}</small></li>`).join('')}</ul>` : '<p class="muted">אין עדיין פעילות</p>'}
+      <section class="card"><h2>יומן פעילות <a class="link" href="#activity">הכל ←</a></h2>
+        ${act.log.length ? `<ul class="timeline">${act.log.slice(0, 7).map(actRow).join('')}</ul>` : `<div class="blank">${I.log}<p>אין עדיין פעילות</p></div>`}
       </section>
     </div>`);
+}
+
+async function renderActivity() {
+  loading('יומן פעילות');
+  const act = await api('/api/activity');
+  shell(`<div class="head"><div><h1>יומן פעילות</h1><p class="sub">כל מה שנעשה בלוח הבקרה — מי, מה ומתי</p></div></div>
+    <section class="card">${act.log.length ? `<ul class="timeline">${act.log.map(actRow).join('')}</ul>` : `<div class="blank">${I.log}<p>אין עדיין פעילות</p></div>`}</section>`);
 }
 
 // ---------- creations ----------
@@ -688,16 +725,16 @@ function showInvite(code: string) {
 async function renderAccount() {
   const j = await api('/api/auth/me');
   me = j.user;
-  const pk = browserSupportsWebAuthn();
+  const pk = canPk();
   shell(`
     <div class="head"><h1>החשבון שלי</h1></div>
-    <section class="card"><h2>טביעות אצבע (Passkeys)</h2>
-      <p class="muted">רשמו טביעת אצבע בכל מכשיר שממנו אתם נכנסים — טלפון ומחשב. כניסה כזו בטוחה יותר מסיסמה ואי אפשר לגנוב אותה.</p>
+    <section class="card"><h2>טביעת אצבע בטלפון</h2>
+      <p class="muted">בטלפון נכנסים עם טביעת אצבע, ובמחשב עם סיסמה. כניסה בטביעת אצבע בטוחה יותר מסיסמה ואי אפשר לגנוב אותה.</p>
       ${me!.passkeys.length ? `<ul class="plist">${me!.passkeys.map((p) => `<li>${I.finger}<div><b>${esc(p.name)}</b><small>נרשם ${fmtDate(p.createdAt)}${p.lastUsed ? ` · שימוש אחרון ${fmtDate(p.lastUsed)}` : ''}</small></div>
         <button class="btn icon danger" data-a="pk-del" data-id="${esc(p.id)}" aria-label="הסרה">${I.trash}</button></li>`).join('')}</ul>` : '<p class="warn">עדיין לא נרשמה טביעת אצבע.</p>'}
-      ${pk ? `<button class="btn pink" data-a="pk-add">${I.finger} רישום טביעת אצבע במכשיר הזה</button>` : '<p class="muted">הדפדפן הזה לא תומך בטביעת אצבע.</p>'}
+      ${pk ? `<button class="btn pink" data-a="pk-add">${I.finger} רישום טביעת אצבע בטלפון הזה</button>` : (isPhone ? '<p class="muted">הדפדפן הזה לא תומך בטביעת אצבע.</p>' : '<p class="muted">כדי לרשום טביעת אצבע, פתחו את הכתובת הזו בטלפון, היכנסו עם הסיסמה ולחצו כאן על "רישום טביעת אצבע".</p>')}
     </section>
-    <section class="card"><h2>סיסמה (גיבוי)</h2>
+    <section class="card"><h2>סיסמה (לכניסה מהמחשב)</h2>
       <form id="chpw" class="row3"><input class="input ltr" type="password" name="password" minlength="8" placeholder="סיסמה חדשה (8 תווים לפחות)" autocomplete="new-password" aria-label="סיסמה חדשה" />
       <button class="btn ghost" type="submit">${me!.hasPassword ? 'שינוי סיסמה' : 'הגדרת סיסמה'}</button></form>
     </section>`);
