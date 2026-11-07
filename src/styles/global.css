@@ -171,8 +171,8 @@ a.ccard:hover { transform: translateY(-6px); box-shadow: 0 18px 40px rgba(31, 26
 .foot-logo { height: 54px; width: auto; margin-bottom: 14px; }
 .idea { display: grid; gap: 10px; }
 .idea .row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
-.idea label { display: grid; gap: 4px; font-size: .82rem; color: #cbbfb1; }
-.idea input, .idea textarea { font: inherit; font-size: .95rem; color: #fff; background: #36323c; border: 1px solid #554e5c; border-radius: 10px; padding: 10px 12px; min-height: 46px; }
+.idea label { display: grid; gap: 4px; min-width: 0; font-size: .82rem; color: #cbbfb1; }
+.idea input, .idea textarea { width: 100%; min-width: 0; font: inherit; font-size: .95rem; color: #fff; background: #36323c; border: 1px solid #554e5c; border-radius: 10px; padding: 10px 12px; min-height: 46px; }
 .idea textarea { min-height: 84px; resize: vertical; }
 .idea button { justify-self: start; background: var(--yellow); color: var(--ink); }
 .idea button:hover { background: #ffc94d; }
@@ -207,6 +207,8 @@ html.a11y-motion *, html.a11y-motion *::before { transition: none !important; an
   .cards, .cards.three { grid-template-columns: 1fr; grid-auto-rows: auto; }
   .materials { grid-template-columns: 1fr; padding: 36px 28px; border-radius: 30px 30px 30px 80px; }
   .materials ul { columns: 1; }
-  .foot-grid { grid-template-columns: 1fr; }
+  .foot-grid { grid-template-columns: 1fr; gap: 36px; }
+  .idea .row { grid-template-columns: 1fr; }
+  .idea button { justify-self: stretch; }
   .section { padding-block: 52px; }
 }
