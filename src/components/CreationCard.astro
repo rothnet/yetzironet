@@ -1,0 +1,13 @@
+---
+import { href, teaser, type Creation } from '../lib/data';
+interface Props { c: Creation; v: number; lazy?: boolean }
+const { c, v, lazy = true } = Astro.props;
+---
+<a class={`ccard v${v % 4}`} href={href(c)}>
+  <div class="ccard-img"><img src={c.cover} alt="" width="800" height="600" loading={lazy ? 'lazy' : 'eager'} /></div>
+  <div class="ccard-panel">
+    <h3>{c.title}</h3>
+    <p>{teaser(c, 80)}</p>
+    <span class="cta" aria-hidden="true">למדריך ←</span>
+  </div>
+</a>

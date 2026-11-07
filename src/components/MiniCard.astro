@@ -1,0 +1,10 @@
+---
+import { href, type Creation } from '../lib/data';
+interface Props { c: Creation }
+const { c } = Astro.props;
+---
+<a class="mini" href={href(c)}>
+  <img src={c.cover} alt="" width="800" height="600" loading="lazy" />
+  <h3>{c.title} <span class="meta">· {c.steps.length} שלבים</span></h3>
+  <span class="pill small" aria-hidden="true">למדריך</span>
+</a>

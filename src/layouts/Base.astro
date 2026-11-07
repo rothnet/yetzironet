@@ -1,0 +1,118 @@
+---
+import '../styles/global.css';
+interface Props { title: string; description?: string; image?: string; active?: 'home' | 'gallery' | null }
+const { title, description = 'יצירות עשה זאת בעצמך — הדרכות מצולמות, שלב אחר שלב.', image, active = null } = Astro.props;
+const full = title === 'יצירונט' ? 'יצירונט — יצירות עשה זאת בעצמך' : `${title} | יצירונט`;
+const og = image ? new URL(encodeURI(image), Astro.site).href : undefined;
+const year = new Date().getFullYear();
+---
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{full}</title>
+  <meta name="description" content={description} />
+  <link rel="icon" href="/favicon.png" type="image/png" />
+  <link rel="canonical" href={Astro.url.href} />
+  <meta property="og:title" content={full} />
+  <meta property="og:description" content={description} />
+  <meta property="og:locale" content="he_IL" />
+  {og && <meta property="og:image" content={og} />}
+</head>
+<body>
+  <a class="skip" href="#main">דלג לתוכן</a>
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="/" aria-label="יצירונט — דף הבית"><img src="/logo-wordmark.png" alt="יצירונט" width="583" height="248" /></a>
+      <nav class="nav" aria-label="תפריט ראשי">
+        <a href="/" aria-current={active === 'home' ? 'page' : undefined}>דף הבית</a>
+        <a href="/השראות-ויצירות/" aria-current={active === 'gallery' ? 'page' : undefined}>השראות ויצירות</a>
+      </nav>
+      <div class="head-tools">
+        <button class="icon-btn" type="button" id="a11y-toggle" aria-label="תפריט נגישות" aria-expanded="false" aria-controls="a11y-panel">
+          <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="4.5" r="1.8"/><path d="M5 8.5l7 1.5 7-1.5M12 10v5m0 0l-3.5 6M12 15l3.5 6"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+  <div class="a11y-panel" id="a11y-panel" role="dialog" aria-label="הגדרות נגישות" hidden>
+    <h2>נגישות</h2>
+    <button type="button" data-a11y="bigger">הגדלת טקסט</button>
+    <button type="button" data-a11y="smaller">הקטנת טקסט</button>
+    <button type="button" data-a11y="contrast" aria-pressed="false">ניגודיות גבוהה</button>
+    <button type="button" data-a11y="links" aria-pressed="false">הדגשת קישורים</button>
+    <button type="button" data-a11y="motion" aria-pressed="false">עצירת אנימציות</button>
+    <button type="button" data-a11y="reset">איפוס</button>
+  </div>
+
+  <main id="main"><slot /></main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <div class="foot-grid">
+        <div>
+          <img class="foot-logo" src="/logo-wordmark-light.png" alt="יצירונט" width="583" height="248" />
+          <p style="margin:0;color:#cbbfb1;font-size:.95rem">השראה והוראות – שלב אחר שלב, להפוך חומרים פשוטים ליצירות מדהימות.</p>
+        </div>
+        <div>
+          <h2>ניווט</h2>
+          <ul>
+            <li><a href="/">דף הבית</a></li>
+            <li><a href="/השראות-ויצירות/">השראות ויצירות</a></li>
+            <li><a href="tel:+972527491119">052-749-1119</a></li>
+            <li><a href="https://wa.me/972527491119" target="_blank" rel="noopener">וואטסאפ</a></li>
+          </ul>
+        </div>
+        <form class="idea" id="idea-form" aria-labelledby="idea-title">
+          <h2 id="idea-title">יש לכם רעיון ליצירה? כתבו לנו...</h2>
+          <div class="row">
+            <label>שם<input name="name" type="text" autocomplete="name" required /></label>
+            <label>טלפון<input name="phone" type="tel" autocomplete="tel" /></label>
+          </div>
+          <label>הודעה<textarea name="message" required></textarea></label>
+          <button class="pill small" type="submit">שליחה בוואטסאפ</button>
+        </form>
+      </div>
+      <div class="foot-bottom">
+        <span>© {year} כל הזכויות שמורות ליצירונט · המידע לשימוש עצמי בלבד</span>
+        <span>פיתוח ועיצוב – רוטנט</span>
+      </div>
+    </div>
+  </footer>
+
+  <script is:inline>
+    (function () {
+      var root = document.documentElement, KEY = 'yz-a11y', s = {};
+      try { s = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) {}
+      function apply() {
+        root.style.setProperty('--fs', String(s.fs || 1));
+        ['contrast', 'links', 'motion'].forEach(function (k) {
+          root.classList.toggle('a11y-' + k, !!s[k]);
+          var b = document.querySelector('[data-a11y="' + k + '"]'); if (b) b.setAttribute('aria-pressed', String(!!s[k]));
+        });
+        try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) {}
+      }
+      apply();
+      var t = document.getElementById('a11y-toggle'), p = document.getElementById('a11y-panel');
+      t.addEventListener('click', function () { var o = p.hidden; p.hidden = !o; t.setAttribute('aria-expanded', String(o)); if (o) p.querySelector('button').focus(); });
+      document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !p.hidden) { p.hidden = true; t.setAttribute('aria-expanded', 'false'); t.focus(); } });
+      p.addEventListener('click', function (e) {
+        var a = e.target.getAttribute('data-a11y'); if (!a) return;
+        if (a === 'bigger') s.fs = Math.min(1.4, (s.fs || 1) + 0.1);
+        else if (a === 'smaller') s.fs = Math.max(0.9, (s.fs || 1) - 0.1);
+        else if (a === 'reset') s = {};
+        else s[a] = !s[a];
+        apply();
+      });
+      var f = document.getElementById('idea-form');
+      f.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var d = new FormData(f);
+        var msg = 'שלום, יש לי רעיון ליצירה!\n' + d.get('message') + '\n\n' + d.get('name') + (d.get('phone') ? ' · ' + d.get('phone') : '');
+        window.open('https://wa.me/972527491119?text=' + encodeURIComponent(msg), '_blank', 'noopener');
+      });
+    })();
+  </script>
+</body>
+</html>

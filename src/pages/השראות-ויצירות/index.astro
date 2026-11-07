@@ -1,0 +1,19 @@
+---
+import Base from '../../layouts/Base.astro';
+import CreationCard from '../../components/CreationCard.astro';
+import { creations } from '../../lib/data';
+---
+<Base title="השראות ויצירות" description="כל היצירות של יצירונט — הדרכות מצולמות, שלב אחר שלב." active="gallery">
+  <section class="section" style="overflow:hidden">
+    <div class="blob" style="width:560px;height:560px;background:var(--pink-soft);right:-300px;top:-120px"></div>
+    <div class="blob" style="width:380px;height:380px;background:var(--teal-soft);left:-200px;top:520px"></div>
+    <div class="blob" style="width:340px;height:340px;background:var(--yellow-soft);right:-160px;bottom:60px"></div>
+    <div class="wrap">
+      <h1 class="section-title">השראות <b>ויצירות</b></h1>
+      <p style="text-align:center;margin:-28px auto 48px;max-width:52ch;color:var(--ink-2);font-size:1.15rem">{creations.length} הדרכות מצולמות, שלב אחר שלב. בחרו יצירה והתחילו.</p>
+      <div class="cards three">
+        {creations.map((c, i) => <CreationCard c={c} v={i} lazy={i > 2} />)}
+      </div>
+    </div>
+  </section>
+</Base>
