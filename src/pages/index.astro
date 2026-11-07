@@ -61,14 +61,14 @@ const heroImg = '/hero.jpg';
     <div class="blob" style="width:340px;height:340px;background:var(--yellow);left:-180px;bottom:-80px"></div>
     <div class="wrap">
       <h2 class="section-title">היצירה <b>המומלצת</b></h2>
-      <article class="story">
+      <a class="story" href={href(story)}>
         <img src={story.cover} alt={story.title} width="800" height="600" loading="lazy" />
         <div class="story-text">
           <h3>{story.title}</h3>
           <p>{teaser(story, 200)}</p>
-          <a class="more" href={href(story)}>+ למדריך המלא</a>
+          <span class="more">+ למדריך המלא</span>
         </div>
-      </article>
+      </a>
     </div>
   </section>
 </Base>

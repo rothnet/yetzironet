@@ -137,7 +137,9 @@ a.ccard:hover { transform: translateY(-6px); box-shadow: 0 18px 40px rgba(31, 26
 .story-text { padding: 20px 20px 20px 36px; }
 .story h3 { margin: 0 0 12px; font-weight: 800; font-size: clamp(1.7rem, 2.8vw, 2.4rem); line-height: 1.15; }
 .story p { margin: 0 0 18px; font-size: 1.05rem; opacity: .95; }
-.story a.more { color: #fff; font-weight: 800; letter-spacing: .06em; font-size: .95rem; text-underline-offset: 6px; }
+.story { text-decoration: none; transition: transform .25s ease, box-shadow .25s ease; }
+.story:hover { transform: translateY(-4px); box-shadow: 0 18px 40px rgba(31, 26, 36, .16); }
+.story .more { text-decoration: underline; color: #fff; font-weight: 800; letter-spacing: .06em; font-size: .95rem; text-underline-offset: 6px; }
 
 /* ---------- creation page ---------- */
 .crumb { font-size: .9rem; font-weight: 500; color: var(--ink-2); margin: 0 0 14px; }
