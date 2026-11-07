@@ -1,7 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
 import CreationCard from '../components/CreationCard.astro';
-import { creations, href, teaser, site, splitTitle } from '../lib/data';
+import { creations, href, teaser, site, splitTitle, altOf } from '../lib/data';
 const h = site.home;
 
 const featured = creations.slice(0, 4);
@@ -9,7 +9,7 @@ const latest = creations.slice(4, 7);
 const story = creations.find((c) => c.slug === h.storySlug) ?? creations[0];
 const heroImg = h.heroImage;
 ---
-<Base title="יצירונט" active="home" image={heroImg}>
+<Base title="יצירונט" active="home" image={site.seo.image || heroImg} jsonLd={[{ '@context': 'https://schema.org', '@type': 'WebSite', name: 'יצירונט', url: 'https://yetzironet.co.il/', inLanguage: 'he-IL', description: site.seo.description }]}>
   <section class="hero">
     <div class="blob" style="width:520px;height:520px;background:var(--cream-2);right:-220px;top:-160px"></div>
     <div class="wrap hero-grid">
@@ -22,7 +22,7 @@ const heroImg = h.heroImage;
         <div class="blob b1 float"></div>
         <div class="blob b2 float d2"></div>
         <div class="blob b3 float d3"></div>
-        <img class="hero-photo" src={heroImg} alt="ידיים אורזות מתנה בנייר חום וחוט חבל" width="605" height="452" fetchpriority="high" style="aspect-ratio:3/2" />
+        <img class="hero-photo" src={heroImg} alt={altOf(heroImg, "ידיים אורזות מתנה בנייר חום וחוט חבל")} width="605" height="452" fetchpriority="high" style="aspect-ratio:3/2" />
       </div>
     </div>
   </section>
@@ -63,7 +63,7 @@ const heroImg = h.heroImage;
     <div class="wrap">
       <h2 class="section-title">{splitTitle(h.storyTitle)[0]} <b>{splitTitle(h.storyTitle)[1]}</b></h2>
       <a class="story" href={href(story)}>
-        <img src={story.cover} alt={story.title} width="800" height="600" loading="lazy" />
+        <img src={story.cover} alt={altOf(story.cover, story.title)} width="800" height="600" loading="lazy" />
         <div class="story-text">
           <h3>{story.title}</h3>
           <p>{teaser(story, 200)}</p>

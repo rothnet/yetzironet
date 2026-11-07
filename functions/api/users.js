@@ -1,4 +1,4 @@
-import { bad, body, getUser, hashPassword, json, listUsers, log, publicUser, putUser, randomId } from './_lib.js';
+import { bad, body, createSession, getUser, hashPassword, json, listUsers, log, publicUser, putUser, randomId } from './_lib.js';
 
 const ownerOnly = (u) => u?.role === 'owner';
 
@@ -36,16 +36,21 @@ export async function onRequestPatch({ request, env, data }) {
     if (String(b.password).length < 8) return bad('סיסמה של 8 תווים לפחות');
     const { salt, hash } = await hashPassword(b.password);
     target.salt = salt; target.passHash = hash;
+    target.sv = (target.sv || 0) + 1;
     await log(env, data.user, 'שינוי סיסמה');
   }
   if (b.removePasskey) {
     target.passkeys = (target.passkeys || []).filter((p) => p.id !== b.removePasskey);
     await env.DB.delete(`cred:${b.removePasskey}`);
+    target.sv = (target.sv || 0) + 1;
     await log(env, data.user, 'הסרת טביעת אצבע', target.name);
   }
+  if (b.signOutAll) { target.sv = (target.sv || 0) + 1; await log(env, data.user, 'ניתוק מכל המכשירים', target.name); }
   if (b.role && !self && ownerOnly(data.user)) target.role = b.role === 'owner' ? 'owner' : 'editor';
   await putUser(env, target);
-  return json({ ok: true, user: publicUser(target) });
+  // keep the current device signed in after a change that signs out the others
+  const headers = self ? { 'set-cookie': await createSession(env, target.id, target.sv || 0) } : {};
+  return json({ ok: true, user: publicUser(target) }, 200, headers);
 }
 
 export async function onRequestDelete({ request, env, data }) {
@@ -55,6 +60,7 @@ export async function onRequestDelete({ request, env, data }) {
   const u = await getUser(env, b.id);
   if (!u) return bad('לא נמצא', 404);
   for (const p of u.passkeys || []) await env.DB.delete(`cred:${p.id}`);
+  u.sv = (u.sv || 0) + 1;
   await env.DB.delete(`email:${u.email}`);
   await env.DB.delete(`user:${u.id}`);
   await log(env, data.user, 'מחיקת משתמש', u.name);

@@ -1,4 +1,4 @@
-import { DATA_PATH, bad, body, checkFiles, commit, json, log, readJsonFile } from './_lib.js';
+import { DATA_PATH, bad, mediaMetaChange, body, checkFiles, commit, json, log, readJsonFile } from './_lib.js';
 
 export async function onRequestGet({ env }) {
   try {
@@ -23,13 +23,14 @@ function validate(creations) {
 }
 
 export async function onRequestPut({ request, env, data }) {
-  const { creations, files = [], baseSha, message, logAction, logDetail } = await body(request);
+  const { creations, files = [], baseSha, message, logAction, logDetail, mediaMeta } = await body(request);
   const err = validate(creations) || checkFiles(files);
   if (err) return bad(err);
   try {
     const current = await readJsonFile(env, DATA_PATH);
     if (baseSha && current.sha !== baseSha) return bad('התוכן השתנה בינתיים (אולי ממכשיר אחר). רעננו את הדף ונסו שוב.', 409);
-    const res = await commit(env, [...files, { path: DATA_PATH, text: JSON.stringify(creations, null, 1) + '\n' }], message || 'עדכון יצירות');
+    const mm = await mediaMetaChange(env, mediaMeta);
+    const res = await commit(env, [...files, ...(mm ? [mm] : []), { path: DATA_PATH, text: JSON.stringify(creations, null, 1) + '\n' }], message || 'עדכון יצירות');
     await log(env, data.user, logAction || 'עדכון יצירות', logDetail || '');
     return json({ ok: true, sha: res.shas[DATA_PATH] });
   } catch (e) {

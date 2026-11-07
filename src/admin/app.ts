@@ -8,6 +8,7 @@ type Download = { label: string; file: string; gated?: boolean } | null;
 type Creation = {
   id: number; slug: string; oldSlug?: string; title: string; intro: string[]; materialsTitle: string;
   materials: string[]; cover: string; steps: Step[]; download: Download; order: number; published?: boolean;
+  seo?: { title?: string; description?: string; image?: string; noindex?: boolean };
 };
 type User = { id: string; name: string; email: string; role: 'owner' | 'editor'; createdAt: string; pending?: boolean; hasPassword?: boolean; passkeys: { id: string; name: string; createdAt: string; lastUsed?: string }[] };
 type Site = Record<string, Record<string, any>>;
@@ -26,11 +27,13 @@ let draftIsNew = false;
 let dirty = false;
 let busy = false;
 const pending = new Map<string, { base64: string; url: string }>(); // public path -> file
+let pendingMeta: Record<string, Record<string, unknown>> = {}; // details for pending uploads
+let altEdits: Record<string, string> = {}; // alt texts changed in the creation editor
 
 // ---------- helpers ----------
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 const $ = <T extends Element = HTMLElement>(sel: string) => app.querySelector(sel) as T | null;
-const imgSrc = (p: string | null) => (p && pending.get(p)?.url) || p || '';
+const imgSrc = (p: string | null | undefined) => (p && (pending.get(p)?.url || M.local.get(p))) || p || '';
 const sorted = () => data.slice().sort((a, b) => a.order - b.order);
 const fmtDate = (s: string) => new Date(s).toLocaleString('he-IL', { day: 'numeric', month: 'numeric', year: '2-digit', hour: '2-digit', minute: '2-digit' });
 const slugify = (s: string) => s.trim().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 80);
@@ -59,6 +62,21 @@ const I = {
   ext: svg('<path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6"/>'),
   plus: svg('<path d="M12 5v14M5 12h14"/>'),
   draft: svg('<path d="M5 4h10l4 4v12H5z"/><path d="M9 12h6M9 16h4"/>'),
+  bolt: svg('<path d="M13 3L5 14h6l-1 7 8-11h-6z"/>'),
+  upload: svg('<path d="M12 16V4M7 9l5-5 5 5M4 20h16"/>'),
+  download: svg('<path d="M12 4v12M7 11l5 5 5-5M4 20h16"/>'),
+  search: svg('<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>'),
+  grid: svg('<rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/>'),
+  list: svg('<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/>'),
+  check: svg('<path d="M5 12l5 5 9-10"/>'),
+  next: svg('<path d="M9 6l6 6-6 6"/>'),
+  prev: svg('<path d="M15 6l-6 6 6 6"/>'),
+  crop: svg('<path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/>'),
+  rotl: svg('<path d="M3 4v6h6"/><path d="M3.5 10A9 9 0 1 1 6 16.5"/>'),
+  rotr: svg('<path d="M21 4v6h-6"/><path d="M20.5 10A9 9 0 1 0 18 16.5"/>'),
+  flip: svg('<path d="M12 3v18M8 7L3 12l5 5M16 7l5 5-5 5"/>'),
+  more: svg('<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>'),
+  seo: svg('<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4M8 11h6M11 8v6"/>'),
   mail: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>'),
 };
 
@@ -93,6 +111,7 @@ function fileToBase64(blob: Blob): Promise<string> {
   });
 }
 
+let lastDims = { width: 0, height: 0 };
 async function resizeImage(file: File, max = 1600): Promise<Blob> {
   const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' } as ImageBitmapOptions);
   const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
@@ -100,21 +119,24 @@ async function resizeImage(file: File, max = 1600): Promise<Blob> {
   c.width = Math.round(bmp.width * k);
   c.height = Math.round(bmp.height * k);
   c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height);
+  lastDims = { width: c.width, height: c.height };
   return new Promise((res) => c.toBlob((b) => res(b!), 'image/jpeg', 0.86));
 }
 
 let seq = 0;
-async function prepareFile(file: File, folder: string): Promise<{ path: string; base64: string; url: string }> {
+async function prepareFile(file: File, folder: string): Promise<{ path: string; base64: string; url: string; width?: number; height?: number }> {
   if (file.type === 'image/svg+xml') throw new Error('קבצי SVG לא נתמכים מטעמי אבטחה — השתמשו ב-PNG או JPG');
   const keep = file.type === 'application/pdf' || file.type === 'image/gif';
   const blob = keep ? file : await resizeImage(file);
   const ext = file.type === 'application/pdf' ? 'pdf' : file.type === 'image/gif' ? 'gif' : 'jpg';
   const name = `${Date.now().toString(36)}${(seq++).toString(36)}.${ext}`;
-  return { path: `/media/uploads/${folder || 'misc'}/${name}`, base64: await fileToBase64(blob), url: URL.createObjectURL(blob) };
+  const dims = keep ? {} : { ...lastDims };
+  return { path: `/media/uploads/${folder || 'misc'}/${name}`, base64: await fileToBase64(blob), url: URL.createObjectURL(blob), ...dims };
 }
 async function addUpload(file: File, folder: string) {
   const f = await prepareFile(file, folder);
   pending.set(f.path, { base64: f.base64, url: f.url });
+  pendingMeta[f.path] = { title: file.name.replace(/\.[^.]+$/, ''), uploaded: new Date().toISOString(), width: f.width, height: f.height };
   return f.path;
 }
 
@@ -164,6 +186,10 @@ const NAV: [string, [string, string, string][]][] = [
   ]],
 ];
 
+const NAV_ALL = NAV.flatMap(([, items]) => items);
+const TABS = ['dashboard', 'creations', 'messages', 'media'];
+const SHORT: Record<string, string> = { dashboard: 'ראשי', media: 'מדיה' };
+
 function shell(inner: string) {
   const active = route.startsWith('creation') ? 'creations' : route;
   app.innerHTML = `
@@ -179,22 +205,36 @@ function shell(inner: string) {
     </aside>
     <div class="scrim" data-a="menu"></div>
     <div class="main">
-      <header class="mbar"><button class="btn icon" data-a="menu" aria-label="תפריט">${I.menu}</button><img src="/logo-wordmark.png" alt="יצירונט" width="583" height="248" /><span class="sp"></span><a class="btn icon" href="/" target="_blank" rel="noopener" aria-label="לאתר">${I.ext}</a></header>
+      <header class="mbar"><img src="/logo-wordmark.png" alt="יצירונט" width="583" height="248" /><span class="sp"></span><a class="btn icon" href="/" target="_blank" rel="noopener" aria-label="לאתר">${I.ext}</a></header>
       <main class="wrap">${inner}</main>
     </div>
+  </div>
+  <nav class="tabbar" aria-label="תפריט ניהול">
+    ${TABS.map((r) => { const it = NAV_ALL.find((x) => x[0] === r)!; return `<a href="#${r}" ${active === r ? 'aria-current="page"' : ''}>${it[2]}<span>${SHORT[r] || it[1]}</span></a>`; }).join('')}
+    <button data-a="more" class="${TABS.includes(active) ? '' : 'cur'}" aria-expanded="false">${I.more}<span>עוד</span></button>
+  </nav>
+  <div class="more-scrim" data-a="more"></div>
+  <div class="more-sheet" role="dialog" aria-label="עוד">
+    <div class="grab"></div>
+    <div class="more-grid">
+      ${NAV_ALL.filter((x) => !TABS.includes(x[0])).map(([r, label, icon]) => `<a href="#${r}" ${active === r ? 'aria-current="page"' : ''}>${icon}<span>${label}</span></a>`).join('')}
+      <a href="/" target="_blank" rel="noopener">${I.ext}<span>לאתר</span></a>
+      <button data-a="logout">${I.out}<span>יציאה</span></button>
+    </div>
+    <div class="more-who"><span class="av">${initial(me?.name)}</span><div><b>${esc(me?.name)}</b><small>${me?.role === 'owner' ? 'מנהל ראשי' : 'עורך/ת'}</small></div></div>
   </div>`;
 }
 
 function go(r: string) {
   dirty = false;
-  pending.clear();
+  pending.clear(); pendingMeta = {}; altEdits = {};
   route = r;
   if (location.hash !== `#${r}`) history.pushState(null, '', `#${r}`);
   render();
 }
 
 async function render() {
-  document.body.classList.remove('nav-open');
+  document.body.classList.remove('nav-open', 'more-open');
   const r = route;
   try {
     if (r === 'dashboard') return await renderDashboard();
@@ -391,10 +431,11 @@ async function renderCreations() {
     </div>`);
 }
 
-async function saveCreations(next: Creation[], files: { path: string; base64: string }[], message: string, logAction: string, logDetail: string) {
+async function saveCreations(next: Creation[], files: { path: string; base64: string }[], message: string, logAction: string, logDetail: string, mediaMeta?: Record<string, unknown>) {
   busy = true;
   try {
-    const j = await api('/api/creations', { method: 'PUT', json: { creations: next, files, baseSha: dataSha, message, logAction, logDetail } });
+    const j = await api('/api/creations', { method: 'PUT', json: { creations: next, files, baseSha: dataSha, message, logAction, logDetail, mediaMeta } });
+    if (mediaMeta) for (const [p, m] of Object.entries(mediaMeta)) M.meta[p] = { ...M.meta[p], ...(m as MMeta) };
     data = next;
     dataSha = j.sha;
     return true;
@@ -421,7 +462,7 @@ const folderOf = (c: Creation) => c.slug || slugify(c.title) || 'new';
 async function renderEditor(id: string) {
   if (!draft || String(draft.id) !== id) {
     loading('עריכת יצירה');
-    await loadCreations();
+    await Promise.all([loadCreations(), loadMedia().catch(() => {})]);
     const c = id === 'new' ? null : data.find((x) => String(x.id) === id);
     if (id !== 'new' && !c) { toast('היצירה לא נמצאה', true); return go('creations'); }
     draftIsNew = !c;
@@ -429,6 +470,8 @@ async function renderEditor(id: string) {
     if (draftIsNew) { route = `creation:${draft.id}`; history.replaceState(null, '', `#${route}`); }
   }
   const c = draft;
+  const altVal = (p: string | null | undefined) => (p ? altEdits[p] ?? M.meta[p]?.alt ?? '' : '');
+  const altField = (p: string | null | undefined, ph: string) => p ? `<input class="input alt-in" data-alt="${esc(p)}" value="${esc(altVal(p))}" placeholder="טקסט חלופי (alt): ${esc(ph)}" aria-label="טקסט חלופי לתמונה" />` : '';
   shell(`
     <div class="head"><a class="btn ghost small" href="#creations">→ כל היצירות</a>
       ${!draftIsNew && c.published !== false ? `<a class="btn ghost small" href="/${esc(c.slug)}/" target="_blank" rel="noopener">${I.eye} צפייה באתר</a>` : ''}</div>
@@ -440,8 +483,8 @@ async function renderEditor(id: string) {
       <label class="field"><span>פתיח</span><textarea class="input" data-f="intro" rows="5" placeholder="כמה מילים על היצירה. שורה ריקה = פסקה חדשה">${esc(c.intro.join('\n\n'))}</textarea></label>
       <div class="field"><span>תמונה ראשית</span>
         <div class="photo cover" data-a="cover" role="button" tabindex="0" aria-label="בחירת תמונה ראשית">
-          ${c.cover ? `<img src="${esc(imgSrc(c.cover))}" alt="" /><span class="chg">החלפה</span>` : 'לחצו להעלאת תמונה'}
-        </div></div>
+          ${c.cover ? `<img src="${esc(imgSrc(c.cover))}" alt="" /><span class="chg">החלפה</span>` : 'לחצו לבחירת תמונה'}
+        </div>${altField(c.cover, c.title)}</div>
     </section>
     <section class="card">
       <h2>חומרים</h2>
@@ -457,6 +500,7 @@ async function renderEditor(id: string) {
           <div class="photo" data-a="step-img" data-i="${i}" role="button" tabindex="0" aria-label="תמונה לשלב ${i + 1}">
             ${s.image ? `<img src="${esc(imgSrc(s.image))}" alt="" /><span class="chg">החלפה</span>` : 'לחצו להוספת תמונה'}
           </div>
+          ${altField(s.image, `${c.title} — שלב ${i + 1}`)}
           <div>
             <div class="top"><span class="num">${i + 1}</span><span class="sp"></span>
               <button class="btn icon" data-a="step-move" data-i="${i}" data-d="-1" ${i === 0 ? 'disabled' : ''} aria-label="הזזת שלב למעלה">${I.up}</button>
@@ -479,9 +523,62 @@ async function renderEditor(id: string) {
         <div style="margin-top:14px"><button class="btn danger small" data-a="dl-del">הסרת הקובץ</button></div>`
       : `<button class="btn ghost" data-a="dl-add">+ צירוף קובץ PDF</button>`}
     </section>
+    ${seoCard(c)}
     ${!draftIsNew ? `<button class="btn danger" data-a="delete">${I.trash} מחיקת היצירה</button>` : ''}
     <div class="savebar"><div class="in"><span class="st" data-st>${dirty ? 'יש שינויים שלא נשמרו' : 'הכל שמור'}</span>
       <button class="btn pink" data-a="save">שמירה ופרסום</button></div></div>`);
+  updateSeoPreview();
+}
+
+// ---------- SEO ----------
+const plain = (c: Creation) => c.intro.join(' ');
+const autoDesc = (c: Creation) => { const t = plain(c); return t.length <= 155 ? t : t.slice(0, 155).replace(/\s+\S*$/, '') + '…'; };
+function seoChecks(c: Creation) {
+  const title = c.seo?.title || c.title;
+  const desc = c.seo?.description || autoDesc(c);
+  const alt = (p: string | null | undefined) => (p ? (altEdits[p] ?? M.meta[p]?.alt ?? '').trim() : 'x');
+  const stepsNoAlt = c.steps.filter((s) => s.image && !alt(s.image)).length;
+  const emptySteps = c.steps.filter((s) => !s.text.trim()).length;
+  return [
+    [title.length >= 15 && title.length <= 60, `כותרת לגוגל: ${title.length} תווים`, 'מומלץ 15–60 תווים'],
+    [desc.length >= 70 && desc.length <= 160, `תיאור לגוגל: ${desc.length} תווים`, 'מומלץ 70–160 תווים'],
+    [Boolean(c.cover) && Boolean(alt(c.cover)), 'לתמונה הראשית יש טקסט חלופי', 'הוסיפו טקסט חלופי לתמונה הראשית'],
+    [stepsNoAlt === 0, stepsNoAlt ? `${stepsNoAlt} תמונות שלבים בלי טקסט חלופי` : 'לכל תמונות השלבים יש טקסט חלופי', 'כתבו מה רואים בכל תמונה'],
+    [emptySteps === 0, emptySteps ? `${emptySteps} שלבים בלי הסבר` : 'לכל השלבים יש הסבר', 'טקסט בכל שלב עוזר לדירוג'],
+    [plain(c).length >= 120, `פתיח: ${plain(c).length} תווים`, 'פתיח של 120 תווים ומעלה'],
+  ] as [boolean, string, string][];
+}
+function seoCard(c: Creation) {
+  const checks = seoChecks(c);
+  const score = Math.round((checks.filter((x) => x[0]).length / checks.length) * 100);
+  return `<section class="card" id="seo-card">
+    <h2>${I.seo} SEO — איך זה ייראה בגוגל <span class="score ${score >= 80 ? 'good' : score >= 50 ? 'mid' : 'low'}" data-seo-score>${score}</span></h2>
+    <div class="gpreview" data-seo-preview>${seoPreviewHtml(c)}</div>
+    <label class="field"><span>כותרת לגוגל <small data-count="title"></small></span><input class="input" data-seo="title" value="${esc(c.seo?.title || '')}" placeholder="${esc(c.title)}" maxlength="90" /></label>
+    <label class="field"><span>תיאור לגוגל <small data-count="description"></small></span><textarea class="input" data-seo="description" rows="3" maxlength="300" placeholder="${esc(autoDesc(c))}">${esc(c.seo?.description || '')}</textarea>
+      <small>אם משאירים ריק — נלקח אוטומטית מהפתיח.</small></label>
+    <div class="field"><span>תמונה לשיתוף (וואטסאפ / פייסבוק)</span>
+      <div class="row3" style="align-items:center">
+        <div class="photo og" data-a="seo-img" role="button" tabindex="0" aria-label="בחירת תמונת שיתוף">${c.seo?.image || c.cover ? `<img src="${esc(imgSrc(c.seo?.image || c.cover))}" alt="" /><span class="chg">${c.seo?.image ? 'החלפה' : 'ברירת מחדל: התמונה הראשית'}</span>` : 'בחירה'}</div>
+        ${c.seo?.image ? `<button class="btn ghost small" data-a="seo-img-clear">חזרה לתמונה הראשית</button>` : ''}
+      </div></div>
+    <label class="switch"><input type="checkbox" data-seo="noindex" ${c.seo?.noindex ? 'checked' : ''} /> להסתיר את הדף מגוגל</label>
+    <ul class="checks" data-seo-checks>${checksHtml(checks)}</ul>
+  </section>`;
+}
+const checksHtml = (checks: [boolean, string, string][]) => checks.map(([ok, t, tip]) => `<li class="${ok ? 'ok' : 'no'}"><span>${ok ? I.check : '!'}</span>${esc(t)}${ok ? '' : ` <small>— ${esc(tip)}</small>`}</li>`).join('');
+function seoPreviewHtml(c: Creation) {
+  const title = c.seo?.title || c.title;
+  return `<div class="g-url">yetzironet.co.il › ${esc(c.slug || '')}</div><div class="g-title">${esc(title)} | יצירונט</div><div class="g-desc">${esc(c.seo?.description || autoDesc(c))}</div>`;
+}
+function updateSeoPreview() {
+  if (!draft) return;
+  const pv = $('[data-seo-preview]'); if (pv) pv.innerHTML = seoPreviewHtml(draft);
+  const checks = seoChecks(draft);
+  const ul = $('[data-seo-checks]'); if (ul) ul.innerHTML = checksHtml(checks);
+  const sc = $('[data-seo-score]');
+  if (sc) { const score = Math.round((checks.filter((x) => x[0]).length / checks.length) * 100); sc.textContent = String(score); sc.className = `score ${score >= 80 ? 'good' : score >= 50 ? 'mid' : 'low'}`; }
+  for (const k of ['title', 'description']) { const el = $(`[data-count="${k}"]`); const v = (draft.seo as any)?.[k] || (k === 'title' ? draft.title : autoDesc(draft)); if (el) el.textContent = `(${v.length})`; }
 }
 
 function markDirty() {
@@ -510,10 +607,15 @@ async function saveDraft() {
   btn.disabled = true;
   const st = $('[data-st]')!;
   st.textContent = files.length ? `שומר ומעלה ${files.length} קבצים…` : 'שומר…';
-  const ok = await saveCreations(next, files, `${draftIsNew ? 'יצירה חדשה' : 'עדכון'}: ${c.title}`, draftIsNew ? 'יצירה חדשה' : 'עדכון יצירה', c.title);
+  const mediaMeta: Record<string, Record<string, unknown>> = {};
+  for (const f of files) { const p = f.path.slice(6); mediaMeta[p] = { ...pendingMeta[p], creation: c.id }; }
+  c.steps.forEach((s, k) => { if (s.image && pending.has(s.image) && !altEdits[s.image]) mediaMeta[s.image].alt = `${c.title} — שלב ${k + 1}`; });
+  if (c.cover && pending.has(c.cover) && !altEdits[c.cover]) mediaMeta[c.cover].alt = c.title;
+  for (const [p, alt] of Object.entries(altEdits)) mediaMeta[p] = { ...(M.meta[p] || {}), ...mediaMeta[p], alt };
+  const ok = await saveCreations(next, files, `${draftIsNew ? 'יצירה חדשה' : 'עדכון'}: ${c.title}`, draftIsNew ? 'יצירה חדשה' : 'עדכון יצירה', c.title, Object.keys(mediaMeta).length ? mediaMeta : undefined);
   btn.disabled = false;
   if (!ok) { st.textContent = 'השמירה נכשלה'; return; }
-  pending.clear();
+  pending.clear(); pendingMeta = {}; altEdits = {};
   dirty = false;
   draftIsNew = false;
   draft = structuredClone(next.find((x) => x.id === c.id)!);
@@ -522,33 +624,400 @@ async function saveDraft() {
 }
 
 // ---------- media library ----------
-let mediaFilter = 'all';
+type MFile = { path: string; size: number };
+type MMeta = { title?: string; alt?: string; caption?: string; description?: string; creation?: number | null; uploaded?: string; width?: number; height?: number };
+const M = {
+  files: [] as MFile[], meta: {} as Record<string, MMeta>, loaded: false,
+  view: 'grid' as 'grid' | 'list', q: '', type: 'all', creation: 'all', month: 'all',
+  selecting: false, selected: new Set<string>(), open: '' as string,
+  local: new Map<string, string>(), // path -> blob url for files not deployed yet
+};
+try { M.view = (localStorage.getItem('yz-media-view') as 'grid' | 'list') || 'grid'; } catch {}
+
+const isImg = (p: string) => /\.(jpe?g|png|webp|gif|svg)$/i.test(p);
+const editable = (p: string) => /\.(jpe?g|png|webp)$/i.test(p);
+const isPdf = (p: string) => /\.pdf$/i.test(p);
+const extOf = (p: string) => (p.split('.').pop() || '').toUpperCase();
+const fileName = (p: string) => decodeURIComponent(p.split('/').pop() || p);
+const kb = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
+const mUrl = (p: string) => M.local.get(p) || p;
+const monthOf = (p: string) => (M.meta[p]?.uploaded || '').slice(0, 7);
+const monthLabel = (ym: string) => new Date(`${ym}-01T12:00:00Z`).toLocaleDateString('he-IL', { month: 'long', year: 'numeric' });
+const creationTitle = (id?: number | null) => (id == null ? '' : data.find((c) => c.id === id)?.title || '');
+
+async function loadMedia(force = false) {
+  if (M.loaded && !force) return;
+  const j = await api('/api/media');
+  M.files = j.files; M.meta = j.meta || {}; M.loaded = true;
+}
+
+function usageMap() {
+  const used = new Map<string, { label: string; href: string }[]>();
+  const add = (p: string | null | undefined, label: string, href: string) => { if (p) used.set(p, [...(used.get(p) || []), { label, href }]); };
+  for (const c of data) {
+    add(c.cover, `${c.title} — תמונה ראשית`, `#creation:${c.id}`);
+    c.steps.forEach((s, i) => add(s.image, `${c.title} — שלב ${i + 1}`, `#creation:${c.id}`));
+    add(c.download?.file, `${c.title} — קובץ להורדה`, `#creation:${c.id}`);
+    add(c.seo?.image, `${c.title} — תמונת שיתוף`, `#creation:${c.id}`);
+  }
+  for (const [sec, o] of Object.entries(site)) for (const v of Object.values(o || {})) if (typeof v === 'string' && v.startsWith('/media/')) add(v, `תוכן האתר (${sec})`, '#content');
+  return used;
+}
+
+function filtered(used: Map<string, unknown>) {
+  const q = M.q.trim().toLowerCase();
+  return M.files.filter((f) => {
+    const m = M.meta[f.path] || {};
+    if (M.type === 'image' && !isImg(f.path)) return false;
+    if (M.type === 'pdf' && !isPdf(f.path)) return false;
+    if (M.type === 'unused' && used.has(f.path)) return false;
+    if (M.type === 'noalt' && (!isImg(f.path) || (m.alt || '').trim())) return false;
+    if (M.creation === 'none' && m.creation != null) return false;
+    if (M.creation !== 'all' && M.creation !== 'none' && String(m.creation) !== M.creation) return false;
+    if (M.month !== 'all' && monthOf(f.path) !== M.month) return false;
+    if (q && !`${fileName(f.path)} ${m.title || ''} ${m.alt || ''}`.toLowerCase().includes(q)) return false;
+    return true;
+  }).sort((a, b) => (M.meta[b.path]?.uploaded || '').localeCompare(M.meta[a.path]?.uploaded || '') || (a.path < b.path ? 1 : -1));
+}
+
 async function renderMedia() {
-  loading('ספריית מדיה');
-  const [{ files }] = await Promise.all([api('/api/media'), loadCreations(), loadSite()]);
-  const usedIn = new Map<string, string>();
-  for (const c of data) for (const p of [c.cover, c.download?.file, ...c.steps.map((s) => s.image)]) if (p) usedIn.set(p, c.title);
-  for (const sec of Object.values(site)) for (const v of Object.values(sec || {})) if (typeof v === 'string' && v.startsWith('/media/')) usedIn.set(v, 'תוכן האתר');
-  const all = files as { path: string; size: number }[];
-  const list = all
-    .filter((f) => mediaFilter === 'all' || (mediaFilter === 'unused' ? !usedIn.has(f.path) : f.path.endsWith('.pdf')))
-    .sort((a, b) => (a.path < b.path ? 1 : -1));
+  if (!M.loaded) loading('ספריית מדיה');
+  await Promise.all([loadMedia(), loadCreations(), loadSite()]);
+  const months = [...new Set(M.files.map((f) => monthOf(f.path)).filter(Boolean))].sort().reverse();
+  const totalSize = M.files.reduce((s, f) => s + f.size, 0);
   shell(`
-    <div class="head"><h1>ספריית מדיה</h1><button class="btn pink" data-a="media-upload">+ העלאת קבצים</button></div>
-    <div class="filters">
-      ${[['all', `הכל (${all.length})`], ['unused', 'לא בשימוש'], ['pdf', 'קבצי PDF']].map(([k, l]) => `<button class="chip" data-a="media-filter" data-k="${k}" aria-pressed="${mediaFilter === k}">${l}</button>`).join('')}
+    <div class="head"><div><h1>ספריית מדיה</h1><p class="sub">${M.files.length} קבצים · ${kb(totalSize)}</p></div>
+      <div class="row3"><button class="btn ghost" data-a="m-optimize-all">${I.bolt} אופטימיזציה לכל הספרייה</button><button class="btn pink" data-a="m-upload">${I.upload} העלאת קבצים</button></div></div>
+    <div class="mtools card">
+      <div class="search">${I.search}<input class="input" type="search" data-m="q" value="${esc(M.q)}" placeholder="חיפוש לפי שם קובץ או כותרת" aria-label="חיפוש" /></div>
+      <select class="input" data-m="type" aria-label="סוג">
+        ${[['all', 'כל הסוגים'], ['image', 'תמונות'], ['pdf', 'קבצי PDF'], ['unused', 'לא בשימוש באתר'], ['noalt', 'תמונות בלי טקסט חלופי']].map(([k, l]) => `<option value="${k}" ${M.type === k ? 'selected' : ''}>${l}</option>`).join('')}
+      </select>
+      <select class="input" data-m="creation" aria-label="יצירה">
+        <option value="all">כל היצירות</option><option value="none" ${M.creation === 'none' ? 'selected' : ''}>לא משויך ליצירה</option>
+        ${sorted().map((c) => `<option value="${c.id}" ${M.creation === String(c.id) ? 'selected' : ''}>${esc(c.title)}</option>`).join('')}
+      </select>
+      <select class="input" data-m="month" aria-label="תאריך">
+        <option value="all">כל התאריכים</option>${months.map((m) => `<option value="${m}" ${M.month === m ? 'selected' : ''}>${monthLabel(m)}</option>`).join('')}
+      </select>
+      <div class="seg" role="group" aria-label="תצוגה">
+        <button data-a="m-view" data-v="grid" aria-pressed="${M.view === 'grid'}" aria-label="קוביות">${I.grid}</button>
+        <button data-a="m-view" data-v="list" aria-pressed="${M.view === 'list'}" aria-label="שורות">${I.list}</button>
+      </div>
+      <button class="btn ${M.selecting ? '' : 'ghost'} small" data-a="m-select">${M.selecting ? 'סיום בחירה' : 'בחירה'}</button>
     </div>
-    <div class="media">${list.map((f) => `
-      <figure class="mfile">
-        ${/\.pdf$/i.test(f.path) ? `<div class="pdf">PDF</div>` : `<img src="${esc(f.path)}" alt="" loading="lazy" />`}
-        <figcaption><span title="${esc(f.path)}">${esc(f.path.split('/').pop())}</span>
-          <small>${usedIn.has(f.path) ? `בשימוש: ${esc(usedIn.get(f.path))}` : `${Math.round(f.size / 1024)}KB`}</small></figcaption>
-        <div class="macts">
-          <button class="btn icon" data-a="media-copy" data-p="${esc(f.path)}" aria-label="העתקת קישור">${I.copy}</button>
-          <button class="btn icon danger" data-a="media-del" data-p="${esc(f.path)}" ${usedIn.has(f.path) ? 'disabled title="בשימוש"' : ''} aria-label="מחיקה">${I.trash}</button>
+    <div id="mbulk"></div>
+    <div id="mlist"></div>
+    <div class="dropzone" id="dropzone"><div>${I.upload}<b>שחררו כאן להעלאה</b></div></div>`);
+  drawMediaList();
+}
+
+function drawMediaList() {
+  const used = usageMap();
+  const list = filtered(used);
+  const box = document.getElementById('mlist');
+  if (!box) return;
+  const sel = (p: string) => M.selected.has(p);
+  const check = (p: string) => `<span class="mcheck ${sel(p) ? 'on' : ''}" aria-hidden="true">${I.check}</span>`;
+  const thumb = (p: string) => isImg(p) ? `<img src="${esc(mUrl(p))}" alt="" loading="lazy" />` : `<span class="ftype">${I.file}<b>${extOf(p)}</b></span>`;
+  box.innerHTML = !list.length ? `<div class="blank card">${I.image}<p>לא נמצאו קבצים</p></div>` : M.view === 'grid'
+    ? `<div class="mgrid ${M.selecting ? 'selecting' : ''}">${list.map((f) => `
+      <button class="mtile ${sel(f.path) ? 'sel' : ''}" data-a="m-open" data-p="${esc(f.path)}" title="${esc(fileName(f.path))}">
+        ${check(f.path)}${thumb(f.path)}${used.has(f.path) ? '' : '<span class="tag-unused">לא בשימוש</span>'}
+      </button>`).join('')}</div>`
+    : `<div class="card mtable-wrap"><table class="mtable"><thead><tr><th class="c"></th><th>קובץ</th><th class="hide-sm">יצירה</th><th class="hide-sm">גודל</th><th class="hide-sm">מידות</th><th class="hide-sm">תאריך</th><th>שימוש</th></tr></thead><tbody>
+      ${list.map((f) => { const m = M.meta[f.path] || {}; return `<tr class="${sel(f.path) ? 'sel' : ''}" data-a="m-open" data-p="${esc(f.path)}">
+        <td class="c"><span class="th">${check(f.path)}${thumb(f.path)}</span></td>
+        <td><b>${esc(m.title || fileName(f.path))}</b><small class="ltr-inline">${esc(fileName(f.path))}</small></td>
+        <td class="hide-sm">${esc(creationTitle(m.creation)) || '<span class="muted">—</span>'}</td>
+        <td class="hide-sm">${kb(f.size)}</td><td class="hide-sm">${m.width ? `${m.width}×${m.height}` : '—'}</td>
+        <td class="hide-sm">${m.uploaded ? new Date(m.uploaded).toLocaleDateString('he-IL') : '—'}</td>
+        <td>${used.has(f.path) ? `<span class="badge on">${used.get(f.path)!.length}</span>` : '<span class="badge off">לא בשימוש</span>'}</td></tr>`; }).join('')}
+      </tbody></table></div>`;
+  const bulk = document.getElementById('mbulk')!;
+  const n = M.selected.size;
+  bulk.innerHTML = M.selecting ? `<div class="bulkbar"><b>${n ? `נבחרו ${n}` : 'לחצו על קבצים כדי לבחור'}</b>
+    <button class="btn ghost small" data-a="m-sel-all">בחירת כל ${list.length} המוצגים</button>
+    ${n ? `<button class="btn ghost small" data-a="m-sel-none">ניקוי</button><span class="sp"></span>
+    <select class="input small-sel" data-m="assign" aria-label="שיוך ליצירה"><option value="">שיוך ליצירה…</option><option value="none">ללא יצירה</option>${sorted().map((c) => `<option value="${c.id}">${esc(c.title)}</option>`).join('')}</select>
+    <button class="btn ghost small" data-a="m-optimize-sel">${I.bolt} אופטימיזציה</button>
+    <button class="btn danger small" data-a="m-del-sel">${I.trash} מחיקה</button>` : ''}</div>` : '';
+}
+
+function openDetails(path: string) {
+  M.open = path;
+  const used = usageMap();
+  const list = filtered(used);
+  const idx = list.findIndex((f) => f.path === path);
+  const f = M.files.find((x) => x.path === path);
+  if (!f) return;
+  const m = M.meta[path] || {};
+  const uses = used.get(path) || [];
+  const url = location.origin + path;
+  const ov = document.getElementById('modal') || Object.assign(document.createElement('div'), { id: 'modal' });
+  document.body.append(ov);
+  ov.className = 'modal';
+  ov.innerHTML = `<div class="sheet mdetail" role="dialog" aria-modal="true" aria-label="פרטי הקובץ">
+    <header><b>פרטי הקובץ</b><span class="sp"></span>
+      <button class="btn icon" data-a="m-nav" data-d="-1" ${idx <= 0 ? 'disabled' : ''} aria-label="הקודם">${I.next}</button>
+      <button class="btn icon" data-a="m-nav" data-d="1" ${idx < 0 || idx >= list.length - 1 ? 'disabled' : ''} aria-label="הבא">${I.prev}</button>
+      <button class="btn icon" data-a="m-close" aria-label="סגירה">×</button></header>
+    <div class="mbody">
+      <div class="mpreview">${isImg(path) ? `<img src="${esc(mUrl(path))}" alt="" />` : `<span class="ftype big">${I.file}<b>${extOf(path)}</b><a class="btn ghost small" href="${esc(path)}" target="_blank" rel="noopener">פתיחת הקובץ</a></span>`}</div>
+      <form class="minfo" id="mform">
+        ${isImg(path) ? `<label class="field"><span>טקסט חלופי (alt)</span><textarea class="input" name="alt" rows="2" placeholder="תארו מה רואים בתמונה — חשוב לגוגל ולנגישות">${esc(m.alt || '')}</textarea></label>` : ''}
+        <label class="field"><span>כותרת</span><input class="input" name="title" value="${esc(m.title || '')}" /></label>
+        <label class="field"><span>כיתוב</span><textarea class="input" name="caption" rows="2">${esc(m.caption || '')}</textarea></label>
+        <label class="field"><span>תיאור</span><textarea class="input" name="description" rows="3">${esc(m.description || '')}</textarea></label>
+        <label class="field"><span>שיוך ליצירה</span><select class="input" name="creation"><option value="">ללא</option>${sorted().map((c) => `<option value="${c.id}" ${m.creation === c.id ? 'selected' : ''}>${esc(c.title)}</option>`).join('')}</select></label>
+        <button class="btn pink" type="submit">שמירת הפרטים</button>
+        <div class="field" style="margin-top:18px"><span>כתובת הקובץ</span><div class="copyrow"><input class="input ltr" readonly value="${esc(url)}" aria-label="כתובת הקובץ" /><button class="btn ghost small" type="button" data-a="copy" data-v="${esc(url)}">${I.copy} העתקה</button></div></div>
+        <div class="field"><span>בשימוש באתר</span>${uses.length ? `<ul class="uses">${uses.map((u) => `<li><a href="${u.href}" data-a="m-close-go">${esc(u.label)}</a></li>`).join('')}</ul>` : '<p class="muted small" style="margin:0">הקובץ לא מופיע באף עמוד</p>'}</div>
+        <dl class="fdata">
+          <dt>שם הקובץ</dt><dd class="ltr-inline">${esc(fileName(path))}</dd>
+          <dt>סוג</dt><dd>${extOf(path)}</dd><dt>גודל</dt><dd>${kb(f.size)}</dd>
+          ${m.width ? `<dt>מידות</dt><dd>${m.width} × ${m.height} פיקסלים</dd>` : ''}
+          <dt>הועלה</dt><dd>${m.uploaded ? new Date(m.uploaded).toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}</dd>
+        </dl>
+        <div class="macts2">
+          ${editable(path) ? `<button class="btn ghost small" type="button" data-a="m-edit">${I.crop} עריכת תמונה</button><button class="btn ghost small" type="button" data-a="m-optimize-one">${I.bolt} אופטימיזציה</button>` : ''}
+          <a class="btn ghost small" href="${esc(path)}" download="${esc(fileName(path))}">${I.download} הורדת המקור</a>
+          <button class="btn danger small" type="button" data-a="m-del-one">${I.trash} מחיקה</button>
         </div>
-      </figure>`).join('') || '<p class="empty">אין קבצים</p>'}
-    </div>`);
+      </form>
+    </div></div>`;
+  const form = ov.querySelector('#mform') as HTMLFormElement;
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const fd = Object.fromEntries(new FormData(form)) as Record<string, string>;
+    const patch = { [path]: { ...m, ...fd, creation: fd.creation ? Number(fd.creation) : null } };
+    try { const j = await api('/api/media', { method: 'PUT', json: { patch } }); M.meta = j.meta; toast('הפרטים נשמרו'); drawMediaList(); }
+    catch (err) { toast((err as Error).message, true); }
+  };
+}
+const closeModal = () => { document.getElementById('modal')?.remove(); M.open = ''; };
+
+// --- image processing ---
+async function blobOf(path: string) { const r = await fetch(mUrl(path), { cache: 'no-store' }); if (!r.ok) throw new Error('לא הצלחתי לטעון את הקובץ'); return r.blob(); }
+const mimeOf = (p: string) => (/\.png$/i.test(p) ? 'image/png' : /\.webp$/i.test(p) ? 'image/webp' : 'image/jpeg');
+const canvasBlob = (c: HTMLCanvasElement, type: string, q = 0.85): Promise<Blob> => new Promise((res) => c.toBlob((b) => res(b!), type, q));
+
+async function optimizeBlob(path: string, src: Blob, max = 1600) {
+  const bmp = await createImageBitmap(src);
+  const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas');
+  c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height);
+  const type = mimeOf(path);
+  if (type === 'image/png' && k === 1) return null; // PNG re-encoding in the browser does not shrink
+  const out = await canvasBlob(c, type, 0.82);
+  return out.size < src.size * 0.9 ? { blob: out, width: c.width, height: c.height } : null;
+}
+
+async function optimizePaths(paths: string[]) {
+  const imgs = paths.filter(editable);
+  if (!imgs.length) return toast('אין תמונות לאופטימיזציה');
+  if (!confirm(`לבצע אופטימיזציה ל-${imgs.length} תמונות?\nהתמונות יוקטנו ל-1600 פיקסלים לכל היותר ויידחסו. תמונה תוחלף רק אם החיסכון משמעותי.`)) return;
+  let saved = 0, done = 0, changed = 0;
+  let batch: { path: string; base64: string }[] = [];
+  let batchMeta: Record<string, MMeta> = {};
+  let batchSize = 0;
+  const flush = async () => {
+    if (!batch.length) return;
+    const j = await api('/api/media', { method: 'POST', json: { files: batch, meta: batchMeta, action: 'optimize' } });
+    M.meta = j.meta; batch = []; batchMeta = {}; batchSize = 0;
+  };
+  for (const p of imgs) {
+    toast(`אופטימיזציה… ${++done}/${imgs.length}`, false, 60000);
+    try {
+      const src = await blobOf(p);
+      const r = await optimizeBlob(p, src);
+      if (!r) continue;
+      const b64 = await fileToBase64(r.blob);
+      batch.push({ path: `public${p}`, base64: b64 });
+      batchMeta[p] = { width: r.width, height: r.height };
+      batchSize += b64.length; saved += src.size - r.blob.size; changed++;
+      const f = M.files.find((x) => x.path === p); if (f) f.size = r.blob.size;
+      M.local.set(p, URL.createObjectURL(r.blob));
+      if (batchSize > 6_000_000 || batch.length >= 40) await flush();
+    } catch (e) { console.warn(p, e); }
+  }
+  await flush();
+  toast(changed ? `הושלם: ${changed} תמונות עודכנו, נחסכו ${kb(saved)}` : 'כל התמונות כבר מותאמות — לא נדרש שינוי', false, 7000);
+  if (M.open) openDetails(M.open);
+  drawMediaList();
+}
+
+async function deletePaths(paths: string[]) {
+  const used = usageMap();
+  const inUse = paths.filter((p) => used.has(p));
+  const msg = `למחוק ${paths.length === 1 ? 'את הקובץ' : `${paths.length} קבצים`} לצמיתות?` +
+    (inUse.length ? `\n\nשימו לב: ${inUse.length === paths.length && inUse.length === 1 ? 'הקובץ' : `${inUse.length} מהם`} בשימוש באתר ויחסרו בעמודים:\n${inUse.slice(0, 5).map((p) => '• ' + used.get(p)![0].label).join('\n')}` : '');
+  if (!confirm(msg)) return false;
+  toast('מוחק…', false, 20000);
+  const j = await api('/api/media', { method: 'DELETE', json: { paths } });
+  M.meta = j.meta;
+  M.files = M.files.filter((f) => !paths.includes(f.path));
+  for (const p of paths) M.selected.delete(p);
+  toast(paths.length === 1 ? 'הקובץ נמחק' : `${paths.length} קבצים נמחקו`);
+  return true;
+}
+
+async function uploadFiles(files: File[], creation: number | null = null) {
+  if (!files.length) return [];
+  toast(`מעלה ${files.length} קבצים…`, false, 60000);
+  const prepared = await Promise.all(files.map((f) => prepareFile(f, 'library')));
+  const meta: Record<string, MMeta> = {};
+  prepared.forEach((p, i) => { meta[p.path] = { title: files[i].name.replace(/\.[^.]+$/, ''), creation, uploaded: new Date().toISOString(), width: p.width, height: p.height }; });
+  const j = await api('/api/media', { method: 'POST', json: { files: prepared.map((p) => ({ path: `public${p.path}`, base64: p.base64 })), meta } });
+  M.meta = j.meta;
+  for (const p of prepared) { M.local.set(p.path, p.url); M.files.unshift({ path: p.path, size: Math.round(p.base64.length * 0.75) }); }
+  toast(`${files.length} קבצים הועלו`);
+  return prepared.map((p) => p.path);
+}
+
+// --- image editor: rotate / flip / crop ---
+let ed: { path: string; canvas: HTMLCanvasElement; history: HTMLCanvasElement[]; crop: null | { x: number; y: number; w: number; h: number } } | null = null;
+const cloneCanvas = (src: HTMLCanvasElement, w = src.width, h = src.height, draw?: (g: CanvasRenderingContext2D) => void) => {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d')!; if (draw) draw(g); else g.drawImage(src, 0, 0); return c;
+};
+async function openEditor(path: string) {
+  const bmp = await createImageBitmap(await blobOf(path));
+  const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height; c.getContext('2d')!.drawImage(bmp, 0, 0);
+  ed = { path, canvas: c, history: [], crop: null };
+  drawEditor();
+}
+function drawEditor() {
+  if (!ed) return;
+  const ov = document.getElementById('modal')!;
+  ov.innerHTML = `<div class="sheet meditor" role="dialog" aria-modal="true" aria-label="עריכת תמונה">
+    <header><b>עריכת תמונה</b><span class="muted small">${ed.canvas.width} × ${ed.canvas.height}</span><span class="sp"></span><button class="btn icon" data-a="ed-cancel" aria-label="סגירה">×</button></header>
+    <div class="edtools">
+      <button class="btn ghost small" data-a="ed-rot" data-d="-1">${I.rotl} סיבוב שמאלה</button>
+      <button class="btn ghost small" data-a="ed-rot" data-d="1">${I.rotr} סיבוב ימינה</button>
+      <button class="btn ghost small" data-a="ed-flip">${I.flip} היפוך</button>
+      <button class="btn ${ed.crop ? 'teal' : 'ghost'} small" data-a="ed-crop" ${ed.crop ? '' : 'disabled'}>${I.crop} חיתוך לבחירה</button>
+      <button class="btn ghost small" data-a="ed-undo" ${ed.history.length ? '' : 'disabled'}>ביטול פעולה</button>
+    </div>
+    <p class="muted small" style="margin:0 0 8px">לחיתוך: גררו על התמונה כדי לסמן את האזור שרוצים להשאיר.</p>
+    <div class="edstage"><div class="edwrap" id="edwrap"><canvas id="edcanvas"></canvas><div class="edsel" id="edsel" hidden></div></div></div>
+    <footer><span class="sp"></span><button class="btn ghost" data-a="ed-cancel">ביטול</button><button class="btn ghost" data-a="ed-save" data-copy="1">שמירה כעותק חדש</button><button class="btn pink" data-a="ed-save">שמירה במקום המקור</button></footer>
+  </div>`;
+  const view = document.getElementById('edcanvas') as HTMLCanvasElement;
+  view.width = ed.canvas.width; view.height = ed.canvas.height;
+  view.getContext('2d')!.drawImage(ed.canvas, 0, 0);
+  const wrap = document.getElementById('edwrap')!;
+  const sel = document.getElementById('edsel')!;
+  let start: { x: number; y: number } | null = null;
+  const pt = (e: PointerEvent) => { const r = view.getBoundingClientRect(); return { x: Math.max(0, Math.min(r.width, e.clientX - r.left)), y: Math.max(0, Math.min(r.height, e.clientY - r.top)), r }; };
+  wrap.onpointerdown = (e) => { start = pt(e); wrap.setPointerCapture(e.pointerId); };
+  wrap.onpointermove = (e) => {
+    if (!start) return;
+    const p = pt(e);
+    const x = Math.min(start.x, p.x), y = Math.min(start.y, p.y), w = Math.abs(p.x - start.x), h = Math.abs(p.y - start.y);
+    Object.assign(sel.style, { left: `${x}px`, top: `${y}px`, width: `${w}px`, height: `${h}px` }); sel.hidden = w < 4 || h < 4;
+    const k = ed!.canvas.width / p.r.width;
+    ed!.crop = w > 8 && h > 8 ? { x: Math.round(x * k), y: Math.round(y * k), w: Math.round(w * k), h: Math.round(h * k) } : null;
+    (document.querySelector('[data-a="ed-crop"]') as HTMLButtonElement).disabled = !ed!.crop;
+  };
+  wrap.onpointerup = () => { start = null; const b = document.querySelector('[data-a="ed-crop"]') as HTMLElement; b.className = `btn ${ed?.crop ? 'teal' : 'ghost'} small`; };
+}
+function edApply(next: HTMLCanvasElement) { if (!ed) return; ed.history.push(ed.canvas); ed.canvas = next; ed.crop = null; drawEditor(); }
+async function edSave(copy: boolean) {
+  if (!ed) return;
+  const { path, canvas } = ed;
+  const blob = await canvasBlob(canvas, mimeOf(path), 0.88);
+  const target = copy ? path.replace(/(\.[^.]+)$/, `-${Date.now().toString(36)}$1`) : path;
+  const prev = M.meta[path] || {};
+  const meta = { [target]: copy ? { ...prev, title: `${prev.title || fileName(path)} (עותק)`, uploaded: new Date().toISOString(), width: canvas.width, height: canvas.height } : { width: canvas.width, height: canvas.height } };
+  toast('שומר…', false, 20000);
+  const j = await api('/api/media', { method: 'POST', json: { files: [{ path: `public${target}`, base64: await fileToBase64(blob) }], meta, action: 'edit' } });
+  M.meta = j.meta;
+  M.local.set(target, URL.createObjectURL(blob));
+  const f = M.files.find((x) => x.path === target);
+  if (f) f.size = blob.size; else M.files.unshift({ path: target, size: blob.size });
+  ed = null;
+  toast(copy ? 'נשמר עותק חדש' : 'התמונה עודכנה — תתעדכן באתר תוך כ-2 דקות', false, 5000);
+  openDetails(target); drawMediaList();
+}
+
+// --- picker (used by the creation editor and site content) ---
+let pickerResolve: ((p: string | null) => void) | null = null;
+let pickerQ = '';
+function pickMedia(kind: 'image' | 'pdf' = 'image'): Promise<string | null> {
+  return new Promise(async (resolve) => {
+    pickerResolve = resolve;
+    await Promise.all([loadMedia(), loadCreations()]);
+    drawPicker(kind);
+  });
+}
+function drawPicker(kind: 'image' | 'pdf') {
+  const ov = document.getElementById('modal') || Object.assign(document.createElement('div'), { id: 'modal' });
+  document.body.append(ov);
+  ov.className = 'modal';
+  const q = pickerQ.trim().toLowerCase();
+  const list = M.files.filter((f) => (kind === 'pdf' ? isPdf(f.path) : isImg(f.path)) && (!q || `${fileName(f.path)} ${M.meta[f.path]?.title || ''} ${creationTitle(M.meta[f.path]?.creation)}`.toLowerCase().includes(q)))
+    .sort((a, b) => (M.meta[b.path]?.uploaded || '').localeCompare(M.meta[a.path]?.uploaded || ''));
+  ov.innerHTML = `<div class="sheet mpicker" role="dialog" aria-modal="true" aria-label="בחירה מהספרייה">
+    <header><b>${kind === 'pdf' ? 'בחירת קובץ' : 'בחירת תמונה'}</b><span class="sp"></span><button class="btn pink small" data-a="pk-upload" data-k="${kind}">${I.upload} העלאה חדשה</button><button class="btn icon" data-a="pk-cancel" aria-label="סגירה">×</button></header>
+    <div class="search" style="margin-bottom:12px">${I.search}<input class="input" type="search" id="pkq" value="${esc(pickerQ)}" placeholder="חיפוש לפי שם, כותרת או יצירה" aria-label="חיפוש" /></div>
+    <div class="mgrid picker">${list.slice(0, 300).map((f) => `<button class="mtile" data-a="pk-pick" data-p="${esc(f.path)}" title="${esc(M.meta[f.path]?.title || fileName(f.path))}">${isImg(f.path) ? `<img src="${esc(mUrl(f.path))}" alt="" loading="lazy" />` : `<span class="ftype">${I.file}<b>${esc(M.meta[f.path]?.title || fileName(f.path))}</b></span>`}</button>`).join('') || '<p class="muted">לא נמצאו קבצים</p>'}</div>
+  </div>`;
+  const inp = document.getElementById('pkq') as HTMLInputElement;
+  inp.oninput = () => { pickerQ = inp.value; const pos = inp.selectionStart; drawPicker(kind); const n = document.getElementById('pkq') as HTMLInputElement; n.focus(); n.setSelectionRange(pos, pos); };
+}
+function finishPick(p: string | null) { closeModal(); const r = pickerResolve; pickerResolve = null; r?.(p); }
+
+async function handleMediaAction(a: string, t: HTMLElement) {
+  const p = t.dataset.p || M.open;
+  switch (a) {
+    case 'm-upload': {
+      const files = await pickFiles('image/*,application/pdf', true);
+      await uploadFiles(files, /^\d+$/.test(M.creation) ? Number(M.creation) : null); drawMediaList(); break;
+    }
+    case 'm-view': M.view = t.dataset.v as 'grid' | 'list'; try { localStorage.setItem('yz-media-view', M.view); } catch {} renderMedia(); break;
+    case 'm-select': M.selecting = !M.selecting; M.selected.clear(); renderMedia(); break;
+    case 'm-sel-all': for (const f of filtered(usageMap())) M.selected.add(f.path); drawMediaList(); break;
+    case 'm-sel-none': M.selected.clear(); drawMediaList(); break;
+    case 'm-open':
+      if (M.selecting) { M.selected.has(p) ? M.selected.delete(p) : M.selected.add(p); drawMediaList(); }
+      else openDetails(p);
+      break;
+    case 'm-nav': {
+      const list = filtered(usageMap()); const i = list.findIndex((f) => f.path === M.open) + Number(t.dataset.d);
+      if (list[i]) openDetails(list[i].path); break;
+    }
+    case 'm-close': closeModal(); break;
+    case 'm-close-go': closeModal(); break;
+    case 'm-del-one': if (await deletePaths([M.open])) { closeModal(); drawMediaList(); } break;
+    case 'm-del-sel': if (await deletePaths([...M.selected])) drawMediaList(); break;
+    case 'm-optimize-one': await optimizePaths([M.open]); break;
+    case 'm-optimize-sel': await optimizePaths([...M.selected]); break;
+    case 'm-optimize-all': await optimizePaths(M.files.map((f) => f.path)); break;
+    case 'm-edit': await openEditor(M.open); break;
+    case 'ed-rot': {
+      const c = ed!.canvas; const d = Number(t.dataset.d);
+      edApply(cloneCanvas(c, c.height, c.width, (g) => { g.translate(d > 0 ? c.height : 0, d > 0 ? 0 : c.width); g.rotate((d * Math.PI) / 2); g.drawImage(c, 0, 0); })); break;
+    }
+    case 'ed-flip': { const c = ed!.canvas; edApply(cloneCanvas(c, c.width, c.height, (g) => { g.translate(c.width, 0); g.scale(-1, 1); g.drawImage(c, 0, 0); })); break; }
+    case 'ed-crop': { const r = ed!.crop; if (!r) return; const c = ed!.canvas; edApply(cloneCanvas(c, r.w, r.h, (g) => g.drawImage(c, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h))); break; }
+    case 'ed-undo': if (ed?.history.length) { ed.canvas = ed.history.pop()!; ed.crop = null; drawEditor(); } break;
+    case 'ed-cancel': { const path = ed?.path; ed = null; if (path) openDetails(path); break; }
+    case 'ed-save': await edSave(Boolean(t.dataset.copy)); break;
+    case 'pk-cancel': finishPick(null); break;
+    case 'pk-pick': finishPick(p); break;
+    case 'pk-upload': {
+      const kind = t.dataset.k === 'pdf' ? 'application/pdf' : 'image/*';
+      const files = await pickFiles(kind, false);
+      if (!files.length) return;
+      const creation = draft && !draftIsNew ? draft.id : null;
+      const [path] = await uploadFiles(files, creation);
+      finishPick(path || null); break;
+    }
+    default: return false;
+  }
+  return true;
 }
 
 // ---------- site content ----------
@@ -560,11 +1029,11 @@ const CONTENT: [string, string, FieldDef[]][] = [
     ['welcomeTitle1', '"ברוכים הבאים" — חלק 1', 'text'], ['welcomeTitle2', '"ברוכים הבאים" — חלק 2 (צבעוני)', 'text'], ['welcomeText', 'טקסט ברוכים הבאים', 'area'],
     ['featuredTitle', 'כותרת היצירות הנבחרות', 'text'], ['moreTitle', 'כותרת "עוד יצירות"', 'text'], ['storyTitle', 'כותרת היצירה המומלצת', 'text'],
   ]],
-  ['gallery', 'דף השראות ויצירות', [['title', 'כותרת', 'text'], ['text', 'טקסט מתחת לכותרת', 'text']]],
+  ['gallery', 'דף השראות ויצירות', [['title', 'כותרת', 'text'], ['text', 'טקסט מתחת לכותרת', 'text'], ['seoTitle', 'כותרת לגוגל (לא חובה)', 'text'], ['seoDescription', 'תיאור לגוגל (לא חובה)', 'area']]],
   ['creationPage', 'עמוד יצירה', [['closingTitle', 'כותרת הסיום', 'text'], ['closingText', 'טקסט הסיום', 'area'], ['closingButton', 'כפתור וואטסאפ', 'text']]],
   ['footer', 'פוטר', [['tagline', 'משפט מתחת ללוגו', 'area'], ['phone', 'טלפון להצגה', 'text'], ['formTitle', 'כותרת הטופס', 'text'], ['rights', 'זכויות', 'text'], ['note', 'הערה', 'text']]],
   ['contact', 'טופס "יש לכם רעיון ליצירה"', [['whatsapp', 'מספר הוואטסאפ שמקבל את הפניות (בפורמט 9725XXXXXXXX)', 'text']]],
-  ['seo', 'גוגל ושיתוף', [['title', 'כותרת האתר בגוגל', 'text'], ['description', 'תיאור האתר בגוגל', 'area']]],
+  ['seo', 'SEO — גוגל ושיתוף (דף הבית וברירת מחדל)', [['title', 'כותרת האתר בגוגל', 'text'], ['description', 'תיאור האתר בגוגל', 'area'], ['image', 'תמונת שיתוף ברירת מחדל (וואטסאפ / פייסבוק)', 'image'], ['googleVerification', 'קוד אימות Google Search Console (רק הקוד שבתוך content)', 'text']]],
 ];
 
 async function renderContent() {
@@ -577,10 +1046,11 @@ async function renderContent() {
       <section class="card"><h2>${title}</h2>
         ${fields.map(([k, label, type]) => type === 'image' ? `
           <div class="field"><span>${label}</span><div class="photo cover" data-a="site-img" data-sec="${sec}" data-k="${k}" role="button" tabindex="0" aria-label="${label}">
-            <img src="${esc(imgSrc(v(sec, k)))}" alt="" /><span class="chg">החלפה</span></div></div>`
+            ${v(sec, k) ? `<img src="${esc(imgSrc(v(sec, k)))}" alt="" /><span class="chg">החלפה</span>` : 'לחצו לבחירת תמונה'}</div>
+            ${v(sec, k) && sec === 'seo' ? `<button class="btn ghost small" data-a="site-img-clear" data-sec="${sec}" data-k="${k}" style="margin-top:8px">הסרה (שימוש בתמונה הראשית)</button>` : ''}</div>`
         : `<label class="field"><span>${label}</span>${type === 'area'
           ? `<textarea class="input" data-sec="${sec}" data-k="${k}" rows="4">${esc(v(sec, k))}</textarea>`
-          : `<input class="input ${k === 'whatsapp' || k === 'phone' ? 'ltr' : ''}" data-sec="${sec}" data-k="${k}" value="${esc(v(sec, k))}" />`}</label>`).join('')}
+          : `<input class="input ${k === 'whatsapp' || k === 'phone' || k === 'googleVerification' ? 'ltr' : ''}" data-sec="${sec}" data-k="${k}" value="${esc(v(sec, k))}" />`}</label>`).join('')}
         ${sec === 'home' ? `<label class="field"><span>היצירה המומלצת בדף הבית</span><select class="input" data-sec="home" data-k="storySlug">
           ${sorted().map((c) => `<option value="${esc(c.slug)}" ${c.slug === v('home', 'storySlug') ? 'selected' : ''}>${esc(c.title)}</option>`).join('')}</select></label>` : ''}
         ${sec === 'contact' ? `<label class="switch"><input type="checkbox" data-sec="contact" data-k="saveCopy" ${site.contact?.saveCopy ? 'checked' : ''} /> לשמור עותק של כל פנייה גם כאן בלוח הבקרה</label>` : ''}
@@ -600,7 +1070,7 @@ async function saveSite(section: string) {
     const j = await api('/api/site', { method: 'PUT', json: { site, baseSha: siteSha, files, section } });
     siteSha = j.sha;
     dirty = false;
-    pending.clear();
+    pending.clear(); pendingMeta = {}; altEdits = {};
     if (st) st.textContent = 'הכל שמור';
     toast('נשמר! יתעדכן באתר תוך כ-2 דקות', false, 5000);
   } catch (e) {
@@ -734,6 +1204,10 @@ async function renderAccount() {
         <button class="btn icon danger" data-a="pk-del" data-id="${esc(p.id)}" aria-label="הסרה">${I.trash}</button></li>`).join('')}</ul>` : '<p class="warn">עדיין לא נרשמה טביעת אצבע.</p>'}
       ${pk ? `<button class="btn pink" data-a="pk-add">${I.finger} רישום טביעת אצבע בטלפון הזה</button>` : (isPhone ? '<p class="muted">הדפדפן הזה לא תומך בטביעת אצבע.</p>' : '<p class="muted">כדי לרשום טביעת אצבע, פתחו את הכתובת הזו בטלפון, היכנסו עם הסיסמה ולחצו כאן על "רישום טביעת אצבע".</p>')}
     </section>
+    <section class="card"><h2>מכשירים מחוברים</h2>
+      <p class="muted">חושדים שמישהו אחר נכנס לחשבון, או ששכחתם להתנתק במחשב אחר? אפשר לנתק את כל המכשירים חוץ מזה.</p>
+      <button class="btn ghost" data-a="signout-all">ניתוק כל המכשירים האחרים</button>
+    </section>
     <section class="card"><h2>סיסמה (לכניסה מהמחשב)</h2>
       <form id="chpw" class="row3"><input class="input ltr" type="password" name="password" minlength="8" placeholder="סיסמה חדשה (8 תווים לפחות)" autocomplete="new-password" aria-label="סיסמה חדשה" />
       <button class="btn ghost" type="submit">${me!.hasPassword ? 'שינוי סיסמה' : 'הגדרת סיסמה'}</button></form>
@@ -753,16 +1227,21 @@ function bind() {
     if (r === route || !me) return;
     if (dirty && !confirm('יש שינויים שלא נשמרו. לצאת בלי לשמור?')) { history.replaceState(null, '', `#${route}`); return; }
     dirty = false;
-    pending.clear();
+    pending.clear(); pendingMeta = {}; altEdits = {};
     if (!r.startsWith('creation:')) draft = null;
     route = r;
     render();
   });
 
-  app.addEventListener('click', async (e) => {
+  document.addEventListener('click', async (e) => {
     const t = (e.target as HTMLElement).closest('[data-a]') as HTMLElement | null;
     if (!t) return;
     const a = t.dataset.a!;
+    if (a.startsWith('m-') || a.startsWith('ed-') || a.startsWith('pk-') && a !== 'pk-login' && a !== 'pk-add' && a !== 'pk-del') {
+      e.preventDefault();
+      try { await handleMediaAction(a, t); } catch (err) { toast((err as Error).message, true, 6000); }
+      return;
+    }
     const i = Number(t.dataset.i);
     const c = draft;
     try {
@@ -783,6 +1262,10 @@ function bind() {
         case 'pk-del':
           if (!confirm('להסיר את טביעת האצבע הזו?')) return;
           await api('/api/users', { method: 'PATCH', json: { removePasskey: t.dataset.id } }); renderAccount(); break;
+        case 'signout-all':
+          if (!confirm('לנתק את כל המכשירים האחרים? יצטרכו להיכנס מחדש.')) return;
+          await api('/api/users', { method: 'PATCH', json: { signOutAll: true } }); toast('כל המכשירים האחרים נותקו'); break;
+        case 'more': document.body.classList.toggle('more-open'); break;
         case 'move': move(Number(t.dataset.id), Number(t.dataset.d)); break;
         case 'save': saveDraft(); break;
         case 'delete': {
@@ -791,8 +1274,10 @@ function bind() {
           if (await saveCreations(next, [], `מחיקה: ${c.title}`, 'מחיקת יצירה', c.title)) { draft = null; go('creations'); toast('היצירה נמחקה'); }
           break;
         }
-        case 'cover': { const [f] = await pickFiles('image/*', false); if (!f || !c) return; c.cover = await addUpload(f, folderOf(c)); markDirty(); renderEditor(String(c.id)); break; }
-        case 'step-img': { const [f] = await pickFiles('image/*', false); if (!f || !c) return; c.steps[i].image = await addUpload(f, folderOf(c)); markDirty(); renderEditor(String(c.id)); break; }
+        case 'cover': { const p = await pickMedia('image'); if (!p || !c) return; c.cover = p; markDirty(); renderEditor(String(c.id)); break; }
+        case 'seo-img': { const p = await pickMedia('image'); if (!p || !c) return; c.seo = { ...c.seo, image: p }; markDirty(); renderEditor(String(c.id)); break; }
+        case 'seo-img-clear': if (c?.seo) { delete c.seo.image; markDirty(); renderEditor(String(c.id)); } break;
+        case 'step-img': { const p = await pickMedia('image'); if (!p || !c) return; c.steps[i].image = p; markDirty(); renderEditor(String(c.id)); break; }
         case 'step-noimg': c!.steps[i].image = null; markDirty(); renderEditor(String(c!.id)); break;
         case 'step-add': c!.steps.push({ image: null, text: '' }); markDirty(); renderEditor(String(c!.id));
           $<HTMLElement>(`[data-step="${c!.steps.length - 1}"]`)?.focus(); break;
@@ -808,31 +1293,21 @@ function bind() {
         case 'step-move': { const j = i + Number(t.dataset.d); [c!.steps[i], c!.steps[j]] = [c!.steps[j], c!.steps[i]]; markDirty(); renderEditor(String(c!.id)); break; }
         case 'mat-add': c!.materials.push(''); markDirty(); renderEditor(String(c!.id)); $<HTMLInputElement>(`[data-mat="${c!.materials.length - 1}"]`)?.focus(); break;
         case 'mat-del': c!.materials.splice(i, 1); markDirty(); renderEditor(String(c!.id)); break;
-        case 'dl-add': { const [f] = await pickFiles('application/pdf', false); if (!f || !c) return; c.download = { label: 'להורדת הקובץ', file: await addUpload(f, folderOf(c)), gated: false }; markDirty(); renderEditor(String(c.id)); break; }
+        case 'dl-add': { const p = await pickMedia('pdf'); if (!p || !c) return; c.download = { label: 'להורדת הקובץ', file: p, gated: false }; markDirty(); renderEditor(String(c.id)); break; }
         case 'dl-del': c!.download = null; markDirty(); renderEditor(String(c!.id)); break;
-        case 'media-filter': mediaFilter = t.dataset.k!; renderMedia(); break;
-        case 'media-copy': case 'copy': {
-          const v = t.dataset.p ? location.origin + t.dataset.p : t.dataset.v!;
+        case 'copy': {
+          const v = t.dataset.v!;
           await navigator.clipboard.writeText(v).then(() => toast('הקישור הועתק'), () => toast(v));
           break;
         }
-        case 'media-upload': {
-          const files = await pickFiles('image/*,application/pdf', true);
-          if (!files.length) return;
-          toast(`מעלה ${files.length} קבצים…`, false, 20000);
-          const prepared = await Promise.all(files.map((f) => prepareFile(f, 'library')));
-          await api('/api/media', { method: 'POST', json: { files: prepared.map((p) => ({ path: `public${p.path}`, base64: p.base64 })) } });
-          toast('הקבצים הועלו. יופיעו באתר תוך כ-2 דקות'); renderMedia(); break;
-        }
-        case 'media-del':
-          if (!confirm('למחוק את הקובץ לצמיתות?')) return;
-          await api('/api/media', { method: 'DELETE', json: { paths: [t.dataset.p] } }); toast('הקובץ נמחק'); renderMedia(); break;
         case 'site-img': {
-          const [f] = await pickFiles('image/*', false);
-          if (!f) return;
-          site[t.dataset.sec!][t.dataset.k!] = await addUpload(f, 'site');
+          const path = await pickMedia('image');
+          if (!path) return;
+          site[t.dataset.sec!] = site[t.dataset.sec!] || {};
+          site[t.dataset.sec!][t.dataset.k!] = path;
           markDirty(); renderContent(); break;
         }
+        case 'site-img-clear': site[t.dataset.sec!][t.dataset.k!] = ''; markDirty(); renderContent(); break;
         case 'site-save': saveSite(t.dataset.section || 'הגדרות האתר'); break;
         case 'msg-read': await api('/api/contact', { method: 'PATCH', json: { key: t.dataset.k, read: Boolean(t.dataset.v) } }); renderMessages(); break;
         case 'msg-del': if (!confirm('למחוק את הפנייה?')) return; await api('/api/contact', { method: 'DELETE', json: { key: t.dataset.k } }); renderMessages(); break;
@@ -846,13 +1321,49 @@ function bind() {
     }
   });
 
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || !document.getElementById('modal')) return;
+    if (pickerResolve) finishPick(null); else if (ed) { const p = ed.path; ed = null; openDetails(p); } else closeModal();
+  });
+  // drag & drop upload on the media page
+  let dragN = 0;
+  document.addEventListener('dragenter', (e) => { if (route === 'media' && e.dataTransfer?.types.includes('Files')) { dragN++; document.body.classList.add('dragging'); } });
+  document.addEventListener('dragleave', () => { if (--dragN <= 0) { dragN = 0; document.body.classList.remove('dragging'); } });
+  document.addEventListener('dragover', (e) => { if (route === 'media') e.preventDefault(); });
+  document.addEventListener('drop', async (e) => {
+    if (route !== 'media') return;
+    e.preventDefault(); dragN = 0; document.body.classList.remove('dragging');
+    const files = [...(e.dataTransfer?.files || [])].filter((f) => /^image\/|application\/pdf/.test(f.type));
+    if (!files.length) return toast('אפשר להעלות תמונות או PDF', true);
+    try { await uploadFiles(files, /^\d+$/.test(M.creation) ? Number(M.creation) : null); drawMediaList(); } catch (err) { toast((err as Error).message, true); }
+  });
+
   app.addEventListener('keydown', (e) => {
     const t = e.target as HTMLElement;
     if ((e.key === 'Enter' || e.key === ' ') && t.classList.contains('photo')) { e.preventDefault(); t.click(); }
   });
 
-  app.addEventListener('input', (e) => {
+  app.addEventListener('input', async (e) => {
     const t = e.target as HTMLInputElement;
+    if (t.dataset.m) {
+      if (t.dataset.m === 'assign') {
+        if (!t.value) return;
+        const creation = t.value === 'none' ? null : Number(t.value);
+        const patch = Object.fromEntries([...M.selected].map((p) => [p, { ...M.meta[p], creation }]));
+        try { const j = await api('/api/media', { method: 'PUT', json: { patch } }); M.meta = j.meta; toast(`${M.selected.size} קבצים שויכו`); } catch (err) { toast((err as Error).message, true); }
+        return drawMediaList();
+      }
+      (M as any)[t.dataset.m] = t.value;
+      return drawMediaList();
+    }
+    if (t.dataset.alt !== undefined) { altEdits[t.dataset.alt] = t.value; updateSeoPreview(); return markDirty(); }
+    if (t.dataset.seo && draft) {
+      draft.seo = { ...draft.seo, [t.dataset.seo]: t.type === 'checkbox' ? t.checked : t.value };
+      if (!draft.seo.title) delete draft.seo.title;
+      if (!draft.seo.description) delete draft.seo.description;
+      updateSeoPreview();
+      return markDirty();
+    }
     if (t.dataset.sec && t.dataset.k) {
       site[t.dataset.sec] = site[t.dataset.sec] || {};
       site[t.dataset.sec][t.dataset.k] = t.type === 'checkbox' ? t.checked : t.value;
@@ -875,6 +1386,7 @@ function bind() {
       case 'dl-gated': if (c.download) c.download.gated = t.checked; break;
       default: return;
     }
+    updateSeoPreview();
     markDirty();
   });
 

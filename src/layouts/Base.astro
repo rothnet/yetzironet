@@ -1,10 +1,11 @@
 ---
 import '../styles/global.css';
 import { site } from '../lib/data';
-interface Props { title: string; description?: string; image?: string; active?: 'home' | 'gallery' | null }
-const { title, description = site.seo.description, image, active = null } = Astro.props;
+interface Props { title: string; description?: string; image?: string; active?: 'home' | 'gallery' | null; noindex?: boolean; ogType?: string; jsonLd?: unknown[] }
+const { title, description = site.seo.description, image, active = null, noindex = false, ogType = 'website', jsonLd = [] } = Astro.props;
 const full = title === 'יצירונט' ? site.seo.title : `${title} | יצירונט`;
-const og = image ? new URL(encodeURI(image), Astro.site).href : undefined;
+const og = new URL(encodeURI(image || site.seo.image || site.home.heroImage), Astro.site).href;
+const canonical = new URL(Astro.url.pathname, Astro.site).href;
 const year = new Date().getFullYear();
 const t = site.tracking;
 const phoneIntl = site.footer.phone.replace(/\D/g, '').replace(/^0/, '+972');
@@ -17,11 +18,18 @@ const phoneIntl = site.footer.phone.replace(/\D/g, '').replace(/^0/, '+972');
   <title>{full}</title>
   <meta name="description" content={description} />
   <link rel="icon" href="/favicon.png" type="image/png" />
-  <link rel="canonical" href={Astro.url.href} />
+  <link rel="canonical" href={canonical} />
+  {noindex && <meta name="robots" content="noindex, follow" />}
+  <meta property="og:type" content={ogType} />
+  <meta property="og:site_name" content="יצירונט" />
+  <meta property="og:url" content={canonical} />
   <meta property="og:title" content={full} />
   <meta property="og:description" content={description} />
   <meta property="og:locale" content="he_IL" />
-  {og && <meta property="og:image" content={og} />}
+  <meta property="og:image" content={og} />
+  <meta name="twitter:card" content="summary_large_image" />
+  {site.seo.googleVerification && <meta name="google-site-verification" content={site.seo.googleVerification} />}
+  {jsonLd.map((j) => <script type="application/ld+json" set:html={JSON.stringify(j)} />)}
   {t.gtm && <script is:inline set:html={`(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer',${JSON.stringify(t.gtm)});`} />}
   {t.ga4 && <script is:inline async src={`https://www.googletagmanager.com/gtag/js?id=${t.ga4}`}></script>}
   {t.ga4 && <script is:inline set:html={`window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config',${JSON.stringify(t.ga4)});`} />}

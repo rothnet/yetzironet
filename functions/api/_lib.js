@@ -9,7 +9,9 @@
 
 export const DATA_PATH = 'src/data/creations.json';
 export const SITE_PATH = 'src/data/site.json';
-const COOKIE = 'yz_s';
+export const MEDIA_PATH = 'src/data/media.json';
+// __Host- prefix: browser only accepts it over HTTPS, for this exact host, Path=/ — cannot be set by subdomains.
+const COOKIE = '__Host-yz';
 const SESSION_TTL = 60 * 60 * 24 * 30; // 30 days
 
 const enc = new TextEncoder();
@@ -23,7 +25,9 @@ export function json(data, status = 200, headers = {}) {
 
 export const bad = (msg, status = 400) => json({ error: msg }, status);
 
+const MAX_BODY = 40 * 1024 * 1024;
 export async function body(request) {
+  if (Number(request.headers.get('content-length') || 0) > MAX_BODY) return {};
   try { return await request.json(); } catch { return {}; }
 }
 
@@ -72,9 +76,11 @@ export async function listUsers(env) {
 export const publicUser = (u) => u && ({ id: u.id, name: u.name, email: u.email, role: u.role, createdAt: u.createdAt, passkeys: (u.passkeys || []).map((p) => ({ id: p.id, name: p.name, createdAt: p.createdAt, lastUsed: p.lastUsed })), hasPassword: Boolean(u.passHash), pending: Boolean(u.pending) });
 
 // ---------- sessions ----------
-export async function createSession(env, userId) {
+// Sessions carry the user's session version (sv); bumping user.sv signs out every device.
+export async function createSession(env, userId, sv) {
+  if (sv === undefined) sv = (await getUser(env, userId))?.sv || 0;
   const token = randomId(32);
-  await env.DB.put(`sess:${token}`, JSON.stringify({ userId, at: Date.now() }), { expirationTtl: SESSION_TTL });
+  await env.DB.put(`sess:${token}`, JSON.stringify({ userId, sv, at: Date.now() }), { expirationTtl: SESSION_TTL });
   return `${COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${SESSION_TTL}`;
 }
 export const clearCookie = `${COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0`;
@@ -85,7 +91,8 @@ export async function currentUser(request, env) {
   const s = JSON.parse((await env.DB.get(`sess:${t}`)) || 'null');
   if (!s) return null;
   const u = await getUser(env, s.userId);
-  return u && !u.pending ? u : null;
+  if (!u || u.pending || (s.sv || 0) !== (u.sv || 0)) return null;
+  return u;
 }
 export async function endSession(request, env) {
   const t = tokenOf(request);
@@ -172,11 +179,11 @@ export async function commit(env, changes, message) {
 }
 
 // ---------- uploads ----------
-export const UPLOAD_PATH = /^public\/media\/[^\\]+\.(jpg|jpeg|png|webp|gif|pdf)$/i; // no SVG: it can carry scripts
+export const UPLOAD_PATH = /^public\/media\/[\p{L}\p{N} ._()\/-]+\.(jpg|jpeg|png|webp|gif|pdf)$/iu; // no SVG: it can carry scripts
 const MAX_FILE = 10 * 1024 * 1024;
 export function checkFiles(files) {
   for (const f of files || []) {
-    if (!UPLOAD_PATH.test(f.path || '') || f.path.includes('..')) return `נתיב קובץ לא תקין: ${f.path}`;
+    if (!UPLOAD_PATH.test(f.path || '') || /(^|\/)\.|\/\//.test(f.path)) return `נתיב קובץ לא תקין: ${f.path}`;
     if (typeof f.base64 !== 'string' || f.base64.length * 0.75 > MAX_FILE) return 'קובץ גדול מדי (עד 10MB)';
   }
   return null;
@@ -195,4 +202,27 @@ export async function limited(request, env, name, max, windowSec) {
   if (n >= max) return true;
   await env.DB.put(key, String(n + 1), { expirationTtl: Math.max(60, windowSec) });
   return false;
+}
+
+// ---------- media details (src/data/media.json) ----------
+const clipS = (v, n) => String(v ?? '').slice(0, n);
+export function cleanMediaMeta(m = {}) {
+  const creation = m.creation === null || m.creation === '' || m.creation === undefined ? null : Number(m.creation);
+  return {
+    title: clipS(m.title, 200), alt: clipS(m.alt, 300), caption: clipS(m.caption, 500), description: clipS(m.description, 2000),
+    creation: Number.isFinite(creation) ? creation : null,
+    uploaded: clipS(m.uploaded, 40) || new Date().toISOString(),
+    ...(Number(m.width) ? { width: Number(m.width) } : {}), ...(Number(m.height) ? { height: Number(m.height) } : {}),
+  };
+}
+export async function readMediaMeta(env) {
+  try { return (await readJsonFile(env, MEDIA_PATH)).data; } catch (e) { if (e.status === 404) return {}; throw e; }
+}
+// Returns a commit change for media.json with the patch applied, or null when there is nothing to change.
+export async function mediaMetaChange(env, patch = {}) {
+  const paths = Object.keys(patch || {}).filter((p) => /^\/media\/[^\\]+$/.test(p) && !p.includes('..'));
+  if (!paths.length) return null;
+  const all = await readMediaMeta(env);
+  for (const p of paths) all[p] = cleanMediaMeta({ ...all[p], ...patch[p], uploaded: all[p]?.uploaded || patch[p]?.uploaded });
+  return { path: MEDIA_PATH, text: JSON.stringify(all, null, 1) + '\n', all };
 }
